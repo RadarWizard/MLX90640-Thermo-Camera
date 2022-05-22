@@ -119,7 +119,6 @@ TSPoint		TSCor;
   HAL_TIM_Base_Start(&htim1);
 
   ID = TFT_readID();
-  ret = readReg32(0xD3);      //for ILI9488, 9486, 9340, 9341
 
   HAL_Delay(100);
 
