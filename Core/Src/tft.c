@@ -3021,39 +3021,10 @@ void TFT_fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
     uint8_t hi = color >> 8, lo = color & 0xFF;
     while (h-- > 0) {
         end = w;
-#if USING_16BIT_BUS
-#if defined(__MK66FX1M0__)      //180MHz M4
-#define STROBE_16BIT {WR_ACTIVE4;WR_ACTIVE;WR_IDLE4;WR_IDLE;}   //56ns
-#elif defined(__SAM3X8E__)      //84MHz M3
-#define STROBE_16BIT {WR_ACTIVE4;WR_ACTIVE2;WR_IDLE4;WR_IDLE2;} //286ns ?ILI9486
-//#define STROBE_16BIT {WR_ACTIVE4;WR_ACTIVE;WR_IDLE4;WR_IDLE;} //238ns SSD1289
-//#define STROBE_16BIT {WR_ACTIVE2;WR_ACTIVE;WR_IDLE2;}      //119ns RM68140
-#else                           //16MHz AVR
-#define STROBE_16BIT {WR_ACTIVE;WR_ACTIVE;WR_IDLE; }            //375ns ?ILI9486
-#endif
-        write_16(color);        //we could just do the strobe
-        lo = end & 7;
-        hi = end >> 3;
-        if (hi)
-            do {
-                STROBE_16BIT;
-                STROBE_16BIT;
-                STROBE_16BIT;
-                STROBE_16BIT;
-                STROBE_16BIT;
-                STROBE_16BIT;
-                STROBE_16BIT;
-                STROBE_16BIT;
-            } while (--hi > 0);
-        while (lo-- > 0) {
-            STROBE_16BIT;
-        }
-#else
         do {
             write8(hi);
             write8(lo);
         } while (--end != 0);
-#endif
     }
     CS_IDLE;
     if (!(_lcd_capable & MIPI_DCS_REV1) || ((_lcd_ID == 0x1526) && (m_rotation & 1)))
@@ -3385,18 +3356,19 @@ void drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg
 		yo16 = yo;
 	}
 	/*Fill rectangle above character*/
-	TFT_fillRect(x, y - gfxFont->yAdvance + 2,  glyph->xAdvance, gfxFont->yAdvance - h , m_textbgcolor); //PRW Test
+	TFT_fillRect(x, y - gfxFont->yAdvance + 5,  glyph->xAdvance, gfxFont->yAdvance + yo - 5 , m_textbgcolor); //PRW Test
 	/*Fill gap to left of character*/
 	if(xo > 0)
 	{
-		TFT_fillRect(x, y - gfxFont->yAdvance + 2, xo ,gfxFont->yAdvance, m_textbgcolor); //PRW Test
+		TFT_fillRect(x, y + yo, xo , h, m_textbgcolor); //PRW Test
 	}
 	/*Fill gap to right of character*/
 	if(w-xo < glyph->xAdvance)
 	{
-		TFT_fillRect(x+xo+w, y - gfxFont->yAdvance + 2, glyph->xAdvance - xo -w ,gfxFont->yAdvance, m_textbgcolor); //PRW Test
+		TFT_fillRect(x+xo+w, y +yo, glyph->xAdvance - xo -w , h, m_textbgcolor); //PRW Test
 	}
 	/*Fill gap beneath character*/
+	TFT_fillRect(x, y + 5,  glyph->xAdvance, (yo +h) - 5  , m_textbgcolor); //PRW Test
 
 	if(size == 1)
 	{
@@ -3504,7 +3476,7 @@ void charBounds(char c, int16_t *x, int16_t *y, int16_t *minx, int16_t *miny, in
 
         if(c == '\n') { // Newline?
             *x  = 0;    // Reset x to zero, advance y by one line
-            *y += m_textsize * (uint8_t)pgm_read_byte(&gfxFont->yAdvance);
+            *y += m_textsize * gfxFont->yAdvance;
         } else if(c != '\r') { // Not a carriage return; is normal char
             uint8_t first = gfxFont->first,
                     last  = gfxFont->last;
@@ -3518,7 +3490,7 @@ void charBounds(char c, int16_t *x, int16_t *y, int16_t *minx, int16_t *miny, in
                         yo = glyph->yOffset;
                 if(m_wrap && ((*x+(((int16_t)xo+gw)*m_textsize)) > _width)) {
                     *x  = 0; // Reset x to zero, advance y by one line
-                    *y += m_textsize * (uint8_t)pgm_read_byte(&gfxFont->yAdvance);
+                    *y += m_textsize * gfxFont->yAdvance;
                 }
                 int16_t ts = (int16_t)m_textsize,
                         x1 = *x + xo * ts,
@@ -3664,22 +3636,22 @@ void TFT_scrolldown (uint16_t speed)
 /***************************//*
  * Make a measurement on touchscreen
  */
-uint16_t TS_Measure(ADC_HandleTypeDef *hadc)
+uint16_t TS_Measure(ADC_HandleTypeDef *hadc, TSPoint *ts)
 {
-uint16_t 	ADCval;
 uint32_t    ret;
+TSPoint	retval;
 
   ADC_MultiModeTypeDef multimode = {0};
   ADC_ChannelConfTypeDef sConfig = {0};
 
+  /*Sample touchscreen over 320 pixel axis*/
+
+  /*XM and XP will already be an output so no need to configure it*/
   PIN_ANALOGUE(LCD_TS_YP_GPIO_Port, LCD_TS_YP_Pin);
   PIN_INPUT(LCD_TS_YM_GPIO_Port, LCD_TS_YM_Pin);
-  PIN_OUTPUT(LCD_TS_XP_GPIO_Port, LCD_TS_XP_Pin);
-  PIN_OUTPUT(LCD_TS_XM_GPIO_Port, LCD_TS_XM_Pin);
 
+  /*XM will already be high so no need to configure it*/
   PIN_LOW(LCD_TS_XP_GPIO_Port, LCD_TS_XP_Pin);
-  PIN_HIGH(LCD_TS_XM_GPIO_Port, LCD_TS_XM_Pin);
-
 
   sConfig.Channel = LCD_TS_YP_ADC_CHAN;
   sConfig.Rank = ADC_REGULAR_RANK_1;
@@ -3704,15 +3676,53 @@ uint32_t    ret;
 	  Error_Handler();
   }
 
-  ADCval = (uint16_t)HAL_ADC_GetValue(hadc);
+  ts->ycor = (uint16_t)HAL_ADC_GetValue(hadc);
+  ts->ycor = (uint16_t)(-0.09718f * (float)ts->ycor + 354.9f);
+  /*Make XP high before making it an output*/
+  PIN_HIGH(LCD_TS_XP_GPIO_Port, LCD_TS_XP_Pin);
 
-  PIN_HIGH(LCD_TS_XM_GPIO_Port, LCD_TS_XM_Pin);
-  PIN_HIGH(LCD_TS_XP_GPIO_Port, LCD_TS_YP_Pin);
+  /*Sample touchscreen over 480 pixel axis*/
+  PIN_OUTPUT(LCD_TS_YP_GPIO_Port, LCD_TS_YP_Pin);
+  PIN_OUTPUT(LCD_TS_YM_GPIO_Port, LCD_TS_YM_Pin);
+  PIN_ANALOGUE(LCD_TS_XM_GPIO_Port, LCD_TS_XM_Pin);
+  PIN_INPUT(LCD_TS_XP_GPIO_Port, LCD_TS_XP_Pin);
 
+  /*XM will already be high so no need to configure it*/
+  PIN_HIGH(LCD_TS_YP_GPIO_Port, LCD_TS_YP_Pin);
+  PIN_LOW(LCD_TS_YM_GPIO_Port, LCD_TS_YM_Pin);
+
+  sConfig.Channel = LCD_TS_XM_ADC_CHAN;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_247CYCLES_5;
+  sConfig.SingleDiff = ADC_SINGLE_ENDED;
+  sConfig.OffsetNumber = ADC_OFFSET_NONE;
+  sConfig.Offset = 0;
+  if (HAL_ADC_ConfigChannel(hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  ret = HAL_ADC_Start(hadc);
+  if(ret != HAL_OK)
+  {
+	  Error_Handler();
+  }
+
+  ret = HAL_ADC_PollForConversion(hadc, 20);
+  if(ret != HAL_OK)
+  {
+	  Error_Handler();
+  }
+
+  ts->xcor = (uint16_t)HAL_ADC_GetValue(hadc);
+
+  ts->xcor = (uint16_t)(-0.1309f * (float)ts->xcor + 508.7f);
+  /*Ensure pins are configured correctly for display use. S*/
   PIN_OUTPUT(LCD_TS_YP_GPIO_Port, LCD_TS_YP_Pin);
   PIN_OUTPUT(LCD_TS_YM_GPIO_Port, LCD_TS_YM_Pin);
   PIN_OUTPUT(LCD_TS_XP_GPIO_Port, LCD_TS_XP_Pin);
   PIN_OUTPUT(LCD_TS_XM_GPIO_Port, LCD_TS_XM_Pin);
-  return ADCval;
+
+  return 0;
 }
 

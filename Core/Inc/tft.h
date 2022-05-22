@@ -48,6 +48,11 @@
 #include "stdint.h"
 #include "fonts.h"
 
+typedef struct{
+ 	uint16_t	xcor;
+ 	uint16_t	ycor;
+ 	uint16_t	pressure;
+}TSPoint;
 
    
 #define true	1
@@ -94,7 +99,7 @@ void TFT_printnewtstr (int row, uint16_t txtcolor, const GFXfont *f, uint8_t txt
 
 void TFT_printstr (uint8_t *str);
 
-uint16_t TS_Measure(ADC_HandleTypeDef *hadc);
+uint16_t TS_Measure(ADC_HandleTypeDef *hadc, TSPoint *ts);
 
 
 #ifdef __cplusplus

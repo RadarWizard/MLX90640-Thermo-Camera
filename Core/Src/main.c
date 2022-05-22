@@ -79,8 +79,10 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 uint32_t    ret;
-uint16_t    ADCval, TS_val;
+uint16_t    ADCval;
 char		msg[32];
+TSPoint		TSCor;
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -131,16 +133,22 @@ char		msg[32];
   TFT_fillScreen(MAGENTA);
   TFT_fillScreen(CYAN);
   TFT_fillScreen(RED);
-  TFT_fillScreen(BLUE);
+  TFT_fillScreen(BLACK);
 
-  TFT_setCursor(0, 20);
+  TFT_setCursor(0, 19);
 
   TFT_setTextbgColor(RED);
   TFT_setTextColor(YELLOW);
   TFT_setTextSize(1);
   TFT_setFont(&mono9x7bold);
   //printnewtstr(100, YELLOW, &mono9x7bold, 2, "Peter was here all the time");
-  TFT_printstr("Peter was here all the time");
+  //TFT_printstr("Peter was here all the time");
+
+  TFT_drawCircle(10, 10, 5, YELLOW);
+  TFT_drawCircle(480 - 10, 10, 5, YELLOW);
+  TFT_drawCircle(10, 320 - 10, 5, YELLOW);
+  TFT_drawCircle(480 - 10, 320 - 10 , 5, YELLOW);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -169,12 +177,17 @@ char		msg[32];
 	  sprintf(msg, "ADC = %05.3f ", (float)ADCval/ 4096.0f * 3.3f);
 
 	  TFT_setTextbgColor(RED);
-	  TFT_setCursor(0, 40);
+	  TFT_setCursor(0, 38);
 	  TFT_printstr(msg);
-	  TS_val = TS_Measure(&hadc1);
-	  sprintf(msg, "TS ADC = %04d", TS_val);
-//	  TFT_fillRect(20, 45, 160, 20, RED);
-	  TFT_setCursor(20, 60);
+	  TS_Measure(&hadc1, &TSCor);
+
+	  sprintf(msg, "TS = %04d, %04d", TSCor.xcor, TSCor.ycor);
+	  if(TSCor.ycor <= 310)
+	  {
+		  //TFT_drawPixel(TSCor.xcor, TSCor.ycor, RED);
+		  TFT_fillCircle(TSCor.xcor, TSCor.ycor, 3, RED);
+	  }
+	  TFT_setCursor(20, 56);
 	  TFT_printstr(msg);
 
   }
