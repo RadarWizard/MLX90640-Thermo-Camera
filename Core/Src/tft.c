@@ -133,7 +133,6 @@ void PIN_ANALOGUE (GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
 #define READ_16(dst)  { uint8_t hi; READ_8(hi); READ_8(dst); dst |= (hi << 8); }
 
 #define CTL_INIT()   { RD_OUTPUT; WR_OUTPUT; CD_OUTPUT; CS_OUTPUT; RESET_OUTPUT; }
-//#define WriteCmd(x)  { CD_COMMAND; write16(x); CD_DATA; }
 #define WriteCmd(x)  { CD_COMMAND; write8(x); CD_DATA; }
 #define WriteData(x) { write16(x); }
 
@@ -160,7 +159,9 @@ int16_t readGRAM(int16_t x, int16_t y, uint16_t * block, int16_t w, int16_t h);
 
 void setReadDir (void);
 void setWriteDir (void);
-static uint8_t done_reset, is8347, is555, is9797;
+
+static uint8_t done_reset, is8347, is9797;
+
 static uint16_t color565_to_555(uint16_t color) {
     return (color & 0xFFC0) | ((color & 0x1F) << 1) | ((color & 0x01));  //lose Green LSB, extend Blue LSB
 }
@@ -255,9 +256,6 @@ static void pushColors_any(uint16_t cmd, uint8_t * block, int16_t n, uint8_t fir
             l = (*block++);
 		}
         color = (isbigend) ? (h << 8 | l) :  (l << 8 | h);
-#if defined(SUPPORT_9488_555)
-        if (is555) color = color565_to_555(color);
-#endif
         if (is9797) write24(color); else
         write16(color);
     }
@@ -2266,18 +2264,6 @@ case 0x4532:    // thanks Leodino
     }
     TFT_setRotation(0);             //PORTRAIT
     TFT_invertDisplay(false);
-#if defined(SUPPORT_9488_555)
-    if (_lcd_ID == 0x9488) {
-		is555 = 0;
-		TFT_drawPixel(0, 0, 0xFFE0);
-		if (readPixel(0, 0) == 0xFF1F) {
-			uint8_t pixfmt = 0x06;
-			pushCommand(0x3A, &pixfmt, 1);
-			_lcd_capable &= ~READ_24BITS;
-			is555 = 1;
-		}
-	}
-#endif
 }
 
 
@@ -2411,9 +2397,6 @@ int16_t readGRAM(int16_t x, int16_t y, uint16_t * block, int16_t w, int16_t h)
                 if (_lcd_capable & READ_BGR)
                     ret = (ret & 0x07E0) | (ret >> 11) | (ret << 11);
             }
-#if defined(SUPPORT_9488_555)
-    if (is555) ret = color555_to_565(ret);
-#endif
             *block++ = ret;
             n--;
             if (!(_lcd_capable & AUTO_READINC))
@@ -2600,9 +2583,6 @@ void TFT_drawPixel(int16_t x, int16_t y, uint16_t color)
    // MCUFRIEND just plots at edge if you try to write outside of the box:
    if (x < 0 || y < 0 || x >= width() || y >= height())
        return;
-#if defined(SUPPORT_9488_555)
-   if (is555) color = color565_to_555(color);
-#endif
    setAddrWindow(x, y, x, y);
    if (is9797) { CS_ACTIVE; WriteCmd(_MW); write24(color); CS_IDLE;} else
    WriteCmdData(_MW, color);
@@ -2987,9 +2967,6 @@ void TFT_drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
 void TFT_fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
 {
     int16_t end;
-#if defined(SUPPORT_9488_555)
-    if (is555) color = color565_to_555(color);
-#endif
     if (w < 0) {
         w = -w;
         x -= w;
