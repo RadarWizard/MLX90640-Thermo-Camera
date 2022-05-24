@@ -15,7 +15,8 @@ void delay (uint32_t time)
 	while ((__HAL_TIM_GET_COUNTER(&htim1))<time);
 }
 
-/*PRW The following two functions are very inefficient. They call the library function HAL_GPIO_Init
+/*PRW These functions make the data pins inputs or outputs
+ * The following two functions are very inefficient. They call the library function HAL_GPIO_Init
  * which is a very long function when we only want to reconfigure the the pins as inputs and outputs*/
 void setReadDir (void)
 {

@@ -88,25 +88,34 @@ void PIN_ANALOGUE (GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
 }
 
 
-#define RD_ACTIVE  PIN_LOW(RD_PORT, RD_PIN)
-#define RD_IDLE    PIN_HIGH(RD_PORT, RD_PIN)
+//Make RD_Pin go low
+#define RD_ACTIVE RD_PORT->BRR = (uint32_t)RD_PIN
+//Make RD_Pin go high
+#define RD_IDLE RD_PORT->BSRR = (uint32_t)RD_PIN
 #define RD_OUTPUT  PIN_OUTPUT(RD_PORT, RD_PIN)
-#define WR_ACTIVE  PIN_LOW(WR_PORT, WR_PIN)
-#define WR_IDLE    PIN_HIGH(WR_PORT, WR_PIN)
+
+//Make WR_Pin go low
+#define WR_ACTIVE WR_PORT->BRR = (uint32_t)WR_PIN
+//Make WR_Pin go high
+#define WR_IDLE    WR_PORT->BSRR = (uint32_t)WR_PIN
 #define WR_OUTPUT  PIN_OUTPUT(WR_PORT, WR_PIN)
-//#define CD_COMMAND PIN_LOW(CD_PORT, CD_PIN)
+
 //Make CD_PIN go low
 #define CD_COMMAND CD_PORT->BRR = (uint32_t)CD_PIN;
 //Make CD_PIN go high
 #define CD_DATA CD_PORT->BSRR = (uint32_t)CD_PIN;
 
-//#define CD_DATA    PIN_HIGH(CD_PORT, CD_PIN)
 #define CD_OUTPUT  PIN_OUTPUT(CD_PORT, CD_PIN)
-#define CS_ACTIVE  PIN_LOW(CS_PORT, CS_PIN)
-#define CS_IDLE    PIN_HIGH(CS_PORT, CS_PIN)
+
+//Make CS_PIN go low
+#define CS_ACTIVE  CS_PORT->BRR = (uint32_t)CS_PIN
+//Make CS_Pin go high
+#define CS_IDLE    CS_PORT->BSRR = (uint32_t)CS_PIN
 #define CS_OUTPUT  PIN_OUTPUT(CS_PORT, CS_PIN)
+
 #define RESET_ACTIVE  PIN_LOW(RESET_PORT, RESET_PIN)
 #define RESET_IDLE    PIN_HIGH(RESET_PORT, RESET_PIN)
+
 #define RESET_OUTPUT  PIN_OUTPUT(RESET_PORT, RESET_PIN)
 
 
@@ -132,7 +141,6 @@ void PIN_ANALOGUE (GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
 #define READ_8(dst)   { RD_STROBE; READ_DELAY; dst = read_8(); RD_IDLE; RD_IDLE; } // read 250ns after RD_ACTIVE goes low
 #define READ_16(dst)  { uint8_t hi; READ_8(hi); READ_8(dst); dst |= (hi << 8); }
 
-#define CTL_INIT()   { RD_OUTPUT; WR_OUTPUT; CD_OUTPUT; CS_OUTPUT; RESET_OUTPUT; }
 #define WriteCmd(x)  { CD_COMMAND; write8(x); CD_DATA; }
 #define WriteData(x) { write16(x); }
 
@@ -160,28 +168,25 @@ int16_t readGRAM(int16_t x, int16_t y, uint16_t * block, int16_t w, int16_t h);
 void setReadDir (void);
 void setWriteDir (void);
 
-static uint8_t done_reset, is8347, is9797;
-
-static uint8_t color565_to_r(uint16_t color) {
-    return ((color & 0xF800) >> 8);  // transform to rrrrrxxx
-}
-static uint8_t color565_to_g(uint16_t color) {
-    return ((color & 0x07E0) >> 3);  // transform to ggggggxx
-}
-static uint8_t color565_to_b(uint16_t color) {
-    return ((color & 0x001F) << 3);  // transform to bbbbbxxx
-}
+static uint8_t is8347;
 
 uint16_t color565(uint8_t r, uint8_t g, uint8_t b) { return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | ((b & 0xF8) >> 3); }
-uint16_t readPixel(int16_t x, int16_t y) { uint16_t color; readGRAM(x, y, &color, 1, 1); return color; }
+
+uint16_t readPixel(int16_t x, int16_t y)
+{
+	uint16_t color;
+	readGRAM(x, y, &color, 1, 1);
+	return color;
+}
 
 static void pushColors_any(uint16_t cmd, uint8_t * block, int16_t n, uint8_t first, uint8_t flags);
 
-static void write24(uint16_t color);
-
 static void writecmddata(uint16_t cmd, uint16_t dat);
 
-void WriteCmdData(uint16_t cmd, uint16_t dat) { writecmddata(cmd, dat); }
+void WriteCmdData(uint16_t cmd, uint16_t dat)
+{
+	writecmddata(cmd, dat);
+}
 
 static inline void WriteCmdParam4(uint8_t cmd, uint8_t d1, uint8_t d2, uint8_t d3, uint8_t d4);
 
@@ -189,7 +194,10 @@ static void init_table(const void *table, int16_t size);
 
 static void WriteCmdParamN(uint16_t cmd, int8_t N, uint8_t * block);
 
-void pushCommand(uint16_t cmd, uint8_t * block, int8_t N) { WriteCmdParamN(cmd, N, block); }
+void pushCommand(uint16_t cmd, uint8_t * block, int8_t N)
+{
+	WriteCmdParamN(cmd, N, block);
+}
 
 static uint16_t read16bits(void);
 
@@ -199,27 +207,21 @@ uint32_t readReg32(uint16_t reg);
 
 uint32_t readReg40(uint16_t reg);
 
-uint16_t m_cursor_y  =0, m_cursor_x    = 0;
+uint16_t m_cursor_y  = 0, m_cursor_x    = 0;
 uint8_t m_textsize  = 1;
 uint16_t m_textcolor =0xFFFF,  m_textbgcolor = 0x0000;
 uint8_t m_wrap      = true;
 uint8_t m_rotation  = 0;
 
-#define pgm_read_byte(addr) (*(const unsigned char *)(addr))
-#define pgm_read_word(addr) (*(const unsigned short *)(addr))
-#define pgm_read_pointer(addr) ((void *)pgm_read_word(addr))
-
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define _swap_int16_t(a, b) { int16_t t = a; a = b; b = t; }
 
-uint16_t  _lcd_xor, _lcd_capable;
+uint16_t  _lcd_capable;
 
 uint16_t _lcd_ID, _lcd_rev, _lcd_madctl, _lcd_drivOut, _MC, _MP, _MW, _SC, _EC, _SP, _EP;
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
 
 
 static void pushColors_any(uint16_t cmd, uint8_t * block, int16_t n, uint8_t first, uint8_t flags)
@@ -243,29 +245,17 @@ static void pushColors_any(uint16_t cmd, uint8_t * block, int16_t n, uint8_t fir
 
     while (n-- > 0) {
         if (isconst) {
-            h = pgm_read_byte(block++);
-            l = pgm_read_byte(block++);
+            h = *block++;
+            l = *block++;
         } else {
-		    h = (*block++);
-            l = (*block++);
+		    h = *block++;
+            l = *block++;
 		}
         color = (isbigend) ? (h << 8 | l) :  (l << 8 | h);
-        if (is9797) write24(color); else
         write16(color);
     }
     CS_IDLE;
 }
-
-static void write24(uint16_t color)
-{
-    uint8_t r = color565_to_r(color);
-    uint8_t g = color565_to_g(color);
-    uint8_t b = color565_to_b(color);
-    write8(r);
-    write8(g);
-    write8(b);
-}
-
 
 static void writecmddata(uint16_t cmd, uint16_t dat)
 {
@@ -284,10 +274,6 @@ static void WriteCmdParamN(uint16_t cmd, int8_t N, uint8_t * block)
     while (N-- > 0) {
         uint8_t u8 = *block++;
         write8(u8);
-        if (N && is8347) {
-            cmd++;
-            WriteCmd(cmd);
-        }
     }
     CS_IDLE;
 }
@@ -308,8 +294,8 @@ static void init_table(const void *table, int16_t size)
 
     while (size > 0)
     {
-        uint8_t cmd = pgm_read_byte(p++);
-        uint8_t len = pgm_read_byte(p++);
+        uint8_t cmd = *p++;
+        uint8_t len = *p++;
         if (cmd == TFTLCD_DELAY8)
         {
             delay(len);
@@ -318,7 +304,7 @@ static void init_table(const void *table, int16_t size)
         else
         {
             for (uint8_t i = 0; i < len; i++)
-                dat[i] = pgm_read_byte(p++);
+                dat[i] = *p++;
             WriteCmdParamN(cmd, len, dat);
         }
         size -= len + 2;
@@ -326,38 +312,27 @@ static void init_table(const void *table, int16_t size)
 }
 
 
-static void init_table16(const void *table, int16_t size)
-{
-    uint16_t *p = (uint16_t *) table;
-    while (size > 0) {
-        uint16_t cmd = pgm_read_word(p++);
-        uint16_t d = pgm_read_word(p++);
-        if (cmd == TFTLCD_DELAY)
-            delay(d);
-        else {
-			writecmddata(cmd, d);                      //static function
-        }
-        size -= 2 * sizeof(int16_t);
-    }
-}
-
-
-
 void TFT_reset(void)
 {
-    done_reset = 1;
     setWriteDir();
-    CTL_INIT();
+    //Make TFT control pins outputs
+    RD_OUTPUT;
+    WR_OUTPUT;
+    CD_OUTPUT;
+    CS_OUTPUT;
+    RESET_OUTPUT;
+
+    //Set initial state of TFT control pins
     CS_IDLE;
     RD_IDLE;
     WR_IDLE;
+    //Generate a reset signal for the TFT display
     RESET_IDLE;
     delay(50);
     RESET_ACTIVE;
     delay(100);
     RESET_IDLE;
     delay(100);
-	WriteCmdData(0xB0, 0x0000);   //R61520 needs this to read ID
 }
 
 static uint16_t read16bits(void)
@@ -372,8 +347,6 @@ static uint16_t read16bits(void)
 uint16_t readReg(uint16_t reg, int8_t index)
 {
     uint16_t ret;
-    if (!done_reset)
-        TFT_reset();
     CS_ACTIVE;
     WriteCmd(reg);
     setReadDir();
@@ -409,7 +382,6 @@ void TFT_init(uint16_t ID)
     int16_t *p16;               //so we can "write" to a const protected variable.
     const uint8_t *table8_ads = NULL;
     int16_t table_size;
-    _lcd_xor = 0;
     switch (_lcd_ID = ID) {
 
     case 0x9488:
@@ -460,89 +432,17 @@ void TFT_init(uint16_t ID)
 }
 
 
-
-
 uint16_t TFT_readID(void)
 {
-    uint16_t ret, ret2;
+    uint16_t ret;
     uint8_t msb;
-    ret = readReg(0,0);           //forces a reset() if called before begin()
-    if (ret == 0x5408)          //the SPFD5408 fails the 0xD3D3 test.
-        return 0x5408;
-    if (ret == 0x5420)          //the SPFD5420 fails the 0xD3D3 test.
-        return 0x5420;
-    if (ret == 0x8989)          //SSD1289 is always 8989
-        return 0x1289;
-    ret = readReg(0x67,0);        //HX8347-A
-    if (ret == 0x4747)
-        return 0x8347;
-//#if defined(SUPPORT_1963) && USING_16BIT_BUS
-    ret = readReg32(0xA1);      //SSD1963: [01 57 61 01]
-    if (ret == 0x6101)
-        return 0x1963;
-    if (ret == 0xFFFF)          //R61526: [xx FF FF FF]
-        return 0x1526;          //subsequent begin() enables Command Access
-//    if (ret == 0xFF00)          //R61520: [xx FF FF 00]
-//        return 0x1520;          //subsequent begin() enables Command Access
-//#endif
-	ret = readReg40(0xBF);
-	if (ret == 0x8357)          //HX8357B: [xx 01 62 83 57 FF]
-        return 0x8357;
-	if (ret == 0x9481)          //ILI9481: [xx 02 04 94 81 FF]
-        return 0x9481;
-    if (ret == 0x1511)          //?R61511: [xx 02 04 15 11] not tested yet
-        return 0x1511;
-    if (ret == 0x1520)          //?R61520: [xx 01 22 15 20]
-        return 0x1520;
-    if (ret == 0x1526)          //?R61526: [xx 01 22 15 26]
-        return 0x1526;
-    if (ret == 0x1581)          //R61581:  [xx 01 22 15 81]
-        return 0x1581;
-    if (ret == 0x1400)          //?RM68140:[xx FF 68 14 00] not tested yet
-        return 0x6814;
-    ret = readReg32(0xD4);
-    if (ret == 0x5310)          //NT35310: [xx 01 53 10]
-        return 0x5310;
-    ret = readReg32(0xD7);
-    if (ret == 0x8031)          //weird unknown from BangGood [xx 20 80 31] PrinceCharles
-        return 0x8031;
-    ret = readReg40(0xEF);      //ILI9327: [xx 02 04 93 27 FF]
-    if (ret == 0x9327)
-        return 0x9327;
-    ret = readReg32(0xFE) >> 8; //weird unknown from BangGood [04 20 53]
-    if (ret == 0x2053)
-        return 0x2053;
-    uint32_t ret32 = readReg32(0x04);
-    msb = ret32 >> 16;
-    ret = ret32;
-    if (msb == 0x00 && ret == 0x8000) { //HX8357-D [xx 00 80 00]
-#if 1
-        uint8_t cmds[] = {0xFF, 0x83, 0x57};
-        pushCommand(0xB9, cmds, 3);
-        msb = readReg(0xD0,0);
-        if (msb == 0x99) return 0x0099; //HX8357-D from datasheet
-        if (msb == 0x90)        //HX8357-C undocumented
-#endif
-            return 0x9090;      //BIG CHANGE: HX8357-D was 0x8357
-    }
-    if (ret == 0x1526)          //R61526 [xx 06 15 26] if I have written NVM
-        return 0x1526;          //subsequent begin() enables Command Access
-	if (ret == 0x89F0)          //ST7735S: [xx 7C 89 F0]
-        return 0x7735;
-	if (ret == 0x8552)          //ST7789V: [xx 85 85 52]
-        return 0x7789;
-    if (ret == 0xAC11)          //?unknown [xx 61 AC 11]
-        return 0xAC11;
-    ret32 = readReg32(0xD3);      //[xx 91 63 00]
-    ret = ret32 >> 8;
-    if (ret == 0x9163) return ret;
+
     ret = readReg32(0xD3);      //for ILI9488, 9486, 9340, 9341
     msb = ret >> 8;
     if (msb == 0x93 || msb == 0x94 || msb == 0x98 || msb == 0x77 || msb == 0x16)
         return ret;             //0x9488, 9486, 9340, 9341, 7796
-    if (ret == 0x00D3 || ret == 0xD3D3)
-        return ret;             //16-bit write-only bus
-	return readReg(0,0);          //0154, 7783, 9320, 9325, 9335, B505, B509
+    else
+    	return 0;
 }
 
 // independent cursor and window registers.   S6D0154, ST7781 increments.  ILI92320/5 do not.
@@ -683,34 +583,6 @@ void TFT_setRotation(uint8_t r)
    // cope with 9320 variants
    else {
        switch (_lcd_ID) {
-#if defined(SUPPORT_9225)
-       case 0x9225:
-           _SC = 0x37, _EC = 0x36, _SP = 0x39, _EP = 0x38;
-           _MC = 0x20, _MP = 0x21, _MW = 0x22;
-           GS = (val & 0x80) ? (1 << 9) : 0;
-           SS_v = (val & 0x40) ? (1 << 8) : 0;
-           WriteCmdData(0x01, GS | SS_v | 0x001C);       // set Driver Output Control
-           goto common_ORG;
-#endif
-#if defined(SUPPORT_0139) || defined(SUPPORT_0154)
-#ifdef SUPPORT_0139
-       case 0x0139:
-           _SC = 0x46, _EC = 0x46, _SP = 0x48, _EP = 0x47;
-           goto common_S6D;
-#endif
-#ifdef SUPPORT_0154
-       case 0x0154:
-           _SC = 0x37, _EC = 0x36, _SP = 0x39, _EP = 0x38;
-           goto common_S6D;
-#endif
-         common_S6D:
-           _MC = 0x20, _MP = 0x21, _MW = 0x22;
-           GS = (val & 0x80) ? (1 << 9) : 0;
-           SS_v = (val & 0x40) ? (1 << 8) : 0;
-           // S6D0139 requires NL = 0x27,  S6D0154 NL = 0x28
-           WriteCmdData(0x01, GS | SS_v | ((_lcd_ID == 0x0139) ? 0x27 : 0x28));
-           goto common_ORG;
-#endif
        case 0x5420:
        case 0x7793:
        case 0x9326:
@@ -731,34 +603,11 @@ void TFT_setRotation(uint8_t r)
            WriteCmdData(0x01, SS_v);     // set Driver Output Control
          common_ORG:
            ORG = (val & 0x20) ? (1 << 3) : 0;
-#ifdef SUPPORT_8230
-           if (_lcd_ID == 0x8230) {    // UC8230 has strange BGR and READ_BGR behaviour
-               if (m_rotation == 1 || m_rotation == 2) {
-                   val ^= 0x08;        // change BGR bit for LANDSCAPE and PORTRAIT_REV
-               }
-           }
-#endif
            if (val & 0x08)
                ORG |= 0x1000;  //BGR
            _lcd_madctl = ORG | 0x0030;
            WriteCmdData(0x03, _lcd_madctl);    // set GRAM write direction and BGR=1.
            break;
-#ifdef SUPPORT_1289
-       case 0x1289:
-           _MC = 0x4E, _MP = 0x4F, _MW = 0x22, _SC = 0x44, _EC = 0x44, _SP = 0x45, _EP = 0x46;
-           if (m_rotation & 1)
-               val ^= 0xD0;    // exchange Landscape modes
-           GS = (val & 0x80) ? (1 << 14) : 0;    //called TB (top-bottom), CAD=0
-           SS_v = (val & 0x40) ? (1 << 9) : 0;   //called RL (right-left)
-           ORG = (val & 0x20) ? (1 << 3) : 0;  //called AM
-           _lcd_drivOut = GS | SS_v | (REV << 13) | 0x013F;      //REV=0, BGR=0, MUX=319
-           if (val & 0x08)
-               _lcd_drivOut |= 0x0800; //BGR
-           WriteCmdData(0x01, _lcd_drivOut);   // set Driver Output Control
-           if (is9797) WriteCmdData(0x11, ORG | 0x4C30); else  // DFM=2, DEN=1, WM=1, TY=0
-           WriteCmdData(0x11, ORG | 0x6070);   // DFM=3, EN=0, TY=1
-           break;
-#endif
 		}
    }
    if ((m_rotation & 1) && ((_lcd_capable & MV_AXIS) == 0)) {
@@ -777,18 +626,12 @@ void TFT_drawPixel(int16_t x, int16_t y, uint16_t color)
    if (x < 0 || y < 0 || x >= width() || y >= height())
        return;
    setAddrWindow(x, y, x, y);
-   if (is9797) { CS_ACTIVE; WriteCmd(_MW); write24(color); CS_IDLE;} else
+
    WriteCmdData(_MW, color);
 }
 
 void setAddrWindow(int16_t x, int16_t y, int16_t x1, int16_t y1)
 {
-#if defined(OFFSET_9327)
-	if (_lcd_ID == 0x9327) {
-	    if (m_rotation == 2) y += OFFSET_9327, y1 += OFFSET_9327;
-	    if (m_rotation == 3) x += OFFSET_9327, x1 += OFFSET_9327;
-   }
-#endif
 #if 1
    if (_lcd_ID == 0x1526 && (m_rotation & 1)) {
 		int16_t dx = x1 - x, dy = y1 - y;
@@ -826,11 +669,6 @@ void setAddrWindow(int16_t x, int16_t y, int16_t x1, int16_t y1)
 
 void TFT_vertScroll(int16_t top, int16_t scrollines, int16_t offset)
 {
-#if defined(OFFSET_9327)
-	if (_lcd_ID == 0x9327) {
-	    if (m_rotation == 2 || m_rotation == 3) top += OFFSET_9327;
-    }
-#endif
     int16_t bfa = HEIGHT - top - scrollines;  // bottom fixed area
     int16_t vsp;
     int16_t sea = top;
@@ -866,25 +704,7 @@ void TFT_vertScroll(int16_t top, int16_t scrollines, int16_t offset)
         WriteCmdData(0x61, _lcd_rev);   //!NDL, !VLE, REV
         WriteCmdData(0x6A, vsp);        //VL#
         break;
-#ifdef SUPPORT_0139
-    case 0x0139:
-        WriteCmdData(0x07, 0x0213 | (_lcd_rev << 2));  //VLE1=1, GON=1, REV=x, D=3
-        WriteCmdData(0x41, vsp);  //VL# check vsp
-        break;
-#endif
-#if defined(SUPPORT_0154) || defined(SUPPORT_9225)  //thanks tongbajiel
-    case 0x9225:
-	case 0x0154:
-        WriteCmdData(0x31, sea);        //SEA
-        WriteCmdData(0x32, top);        //SSA
-        WriteCmdData(0x33, vsp - top);  //SST
-        break;
-#endif
-#ifdef SUPPORT_1289
-    case 0x1289:
-        WriteCmdData(0x41, vsp);        //VL#
-        break;
-#endif
+
 	case 0x5420:
     case 0x7793:
 	case 0x9326:
@@ -941,21 +761,10 @@ void TFT_invertDisplay(uint8_t i)
     }
     // cope with 9320 style variants:
     switch (_lcd_ID) {
-#ifdef SUPPORT_0139
-    case 0x0139:
-#endif
     case 0x9225:                                        //REV is in reg(0x07) like Samsung
     case 0x0154:
         WriteCmdData(0x07, 0x13 | (_lcd_rev << 2));     //.kbv kludge
         break;
-#ifdef SUPPORT_1289
-    case 0x1289:
-        _lcd_drivOut &= ~(1 << 13);
-        if (_lcd_rev)
-            _lcd_drivOut |= (1 << 13);
-        WriteCmdData(0x01, _lcd_drivOut);
-        break;
-#endif
 	case 0x5420:
     case 0x7793:
     case 0x9326:
@@ -1595,7 +1404,7 @@ size_t TFT_write(uint8_t c)
 		uint8_t first = gfxFont->first;
 		if((c >= first) && (c <= (uint8_t)gfxFont->last))
 		{
-			GFXglyph *glyph = &(((GFXglyph *)pgm_read_pointer(&gfxFont->glyph))[c - first]);
+			GFXglyph *glyph = &gfxFont->glyph[c - first];
 			uint16_t   w     = glyph->width,
 					   h     = glyph->height;
 			if((w > 0) && (h > 0)) { // Is there an associated bitmap?
@@ -1651,8 +1460,7 @@ void charBounds(char c, int16_t *x, int16_t *y, int16_t *minx, int16_t *miny, in
             uint8_t first = gfxFont->first,
                     last  = gfxFont->last;
             if((c >= first) && (c <= last)) { // Char present in this font?
-                GFXglyph *glyph = &(((GFXglyph *)pgm_read_pointer(
-                  &gfxFont->glyph))[c - first]);
+                GFXglyph *glyph = &gfxFont->glyph[c - first];
                 uint8_t gw = glyph->width,
                         gh = glyph->height,
                         xa = glyph->xAdvance;

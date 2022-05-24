@@ -91,7 +91,6 @@ TSPoint		TSCor;
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -118,6 +117,8 @@ TSPoint		TSCor;
 
   HAL_TIM_Base_Start(&htim1);
 
+  /*Reset the display before callling any display related commands*/
+  TFT_reset();
   ID = TFT_readID();
 
   HAL_Delay(100);
@@ -172,7 +173,7 @@ TSPoint		TSCor;
 
 	  ADCval = (uint16_t)HAL_ADC_GetValue(&hadc1);
 
-	  HAL_Delay(100);
+	  HAL_Delay(10);
 	  sprintf(msg, "ADC = %05.3f ", (float)ADCval/ 4096.0f * 3.3f);
 
 	  TFT_setTextbgColor(RED);
