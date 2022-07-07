@@ -236,7 +236,7 @@ GFXfont *gfxFont;
 const GFXfont mono12x7  = {
 (uint8_t  *)FreeMono12x7Bitmaps,
 (GFXglyph *)FreeMono12x7Glyphs,
-0x20, 0x7E, 24 };
+0x20, 0x7E, 24, 6 };
 
 
 
@@ -416,7 +416,7 @@ const GFXglyph FreeMono9pt7bGlyphs[]  = {
 const GFXfont mono9x7  = {
   (uint8_t  *)FreeMono9pt7bBitmaps,
   (GFXglyph *)FreeMono9pt7bGlyphs,
-  0x20, 0x7E, 18 };
+  0x20, 0x7E, 18, 5 };
 
 
 const uint8_t FreeMono18pt7bBitmaps[]  = {
@@ -779,7 +779,7 @@ const GFXglyph FreeMono18pt7bGlyphs[]  = {
 const GFXfont mono18x7  = {
   (uint8_t  *)FreeMono18pt7bBitmaps,
   (GFXglyph *)FreeMono18pt7bGlyphs,
-  0x20, 0x7E, 35 };
+  0x20, 0x7E, 35, 9 };
 
 const uint8_t FreeMonoBold9pt7bBitmaps[]  = {
   0xFF, 0xFF, 0xD2, 0x1F, 0x80, 0xEC, 0x89, 0x12, 0x24, 0x40, 0x36, 0x36,
@@ -967,7 +967,7 @@ const GFXglyph FreeMonoBold9pt7bGlyphs[]  = {
 const GFXfont mono9x7bold  = {
   (uint8_t  *)FreeMonoBold9pt7bBitmaps,
   (GFXglyph *)FreeMonoBold9pt7bGlyphs,
-  0x20, 0x7E, 18 };
+  0x20, 0x7E, 18, 5 };
 
 
 const uint8_t FreeMonoBold12pt7bBitmaps[]  = {
@@ -1217,7 +1217,7 @@ const GFXglyph FreeMonoBold12pt7bGlyphs[]  = {
 const GFXfont mono12x7bold  = {
   (uint8_t  *)FreeMonoBold12pt7bBitmaps,
   (GFXglyph *)FreeMonoBold12pt7bGlyphs,
-  0x20, 0x7E, 24 };
+  0x20, 0x7E, 24, 5 };
 
 
 const uint8_t FreeMonoBold18pt7bBitmaps[]  = {
@@ -1640,4 +1640,4 @@ const GFXglyph FreeMonoBold18pt7bGlyphs[]  = {
 const GFXfont mono18x7bold  = {
   (uint8_t  *)FreeMonoBold18pt7bBitmaps,
   (GFXglyph *)FreeMonoBold18pt7bGlyphs,
-  0x20, 0x7E, 35 };
+  0x20, 0x7E, 35, 9 };

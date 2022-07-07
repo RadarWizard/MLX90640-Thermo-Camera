@@ -73,7 +73,7 @@ typedef struct{
 #define FLIP_VERT       (1<<13)
 #define FLIP_HORIZ      (1<<14)
 
-uint32_t readReg32(uint16_t reg);
+#define min(a, b) (((a) < (b)) ? (a) : (b))
 
 void TFT_init(uint16_t ID);
 void TFT_reset(void);
@@ -84,20 +84,19 @@ void TFT_invertDisplay(uint8_t i);
 void TFT_vertScroll(int16_t top, int16_t scrollines, int16_t offset);
 
 void TFT_setFont(const GFXfont *f);
-
 void TFT_setTextWrap(uint8_t w);
-
 void TFT_setTextColor (uint16_t color);
-
 void TFT_setTextbgColor (uint16_t color);
-
 void TFT_setTextSize (uint8_t size);
-
 void TFT_setCursor(int16_t x, int16_t y);
-
 void TFT_printnewtstr (int row, uint16_t txtcolor, const GFXfont *f, uint8_t txtsize, uint8_t *str);
-
 void TFT_printstr (uint8_t *str);
+uint16_t TFT_width(void);
+uint16_t TFT_height(void);
+void  TFT_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color);
+void  TFT_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color);
+uint16_t TFT_color565(uint8_t r, uint8_t g, uint8_t b);
+
 
 uint16_t TS_Measure(ADC_HandleTypeDef *hadc, TSPoint *ts);
 

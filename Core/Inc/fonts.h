@@ -17,6 +17,7 @@ typedef struct {
 	uint8_t   first;       ///< ASCII extents (first char)
     uint8_t   last;        ///< ASCII extents (last char)
 	uint8_t   yAdvance;    ///< Newline distance (y axis)
+	uint8_t   yoffset;     ///< y offset for background filling
 } GFXfont;
 
 extern GFXfont *gfxFont;

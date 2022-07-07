@@ -38,7 +38,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "tft.h"
-//#include "stm32l4xx_hal.h"
 #include "string.h"
 #include "functions.h"
 #include "user_setting.h"
@@ -87,6 +86,11 @@ void PIN_ANALOGUE (GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
 	  HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
 }
 
+/*Maximum value the ADC will give*/
+#define ADC_MAXIMUM (4096.0f)
+
+/*Resistance between XM and XP*/
+#define TOUCHSCREEN_RESISTANCE (252.0f)
 
 //Make RD_Pin go low
 #define RD_ACTIVE RD_PORT->BRR = (uint32_t)RD_PIN
@@ -147,20 +151,24 @@ void PIN_ANALOGUE (GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
 
 /************************************************************************************************************/
 
-uint16_t _width    = WIDTH;
-uint16_t _height   = HEIGHT;
+uint16_t m_width    = WIDTH;
+uint16_t m_height   = HEIGHT;
 
-uint16_t width(void)
-{ return _width; }
+uint16_t TFT_width(void)
+{
+	return m_width;
+}
 
-uint16_t height(void)
-{ return _height; }
+uint16_t TFT_height(void)
+{
+	return m_height;
+}
 
 void pushColors16b(uint16_t * block, int16_t n, uint8_t first);
 void pushColors8b(uint8_t * block, int16_t n, uint8_t first);
 void pushColors4n(const uint8_t * block, int16_t n, uint8_t first, uint8_t bigend);
-void drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color);
-void drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color);
+void TFT_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color);
+void TFT_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color);
 
 void setAddrWindow(int16_t x, int16_t y, int16_t x1, int16_t y1);
 int16_t readGRAM(int16_t x, int16_t y, uint16_t * block, int16_t w, int16_t h);
@@ -170,7 +178,10 @@ void setWriteDir (void);
 
 static uint8_t is8347;
 
-uint16_t color565(uint8_t r, uint8_t g, uint8_t b) { return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | ((b & 0xF8) >> 3); }
+uint16_t TFT_color565(uint8_t r, uint8_t g, uint8_t b)
+{
+	return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | ((b & 0xF8) >> 3);
+}
 
 uint16_t readPixel(int16_t x, int16_t y)
 {
@@ -213,7 +224,6 @@ uint16_t m_textcolor =0xFFFF,  m_textbgcolor = 0x0000;
 uint8_t m_wrap      = true;
 uint8_t m_rotation  = 0;
 
-#define min(a, b) (((a) < (b)) ? (a) : (b))
 #define _swap_int16_t(a, b) { int16_t t = a; a = b; b = t; }
 
 uint16_t  _lcd_capable;
@@ -287,6 +297,7 @@ static inline void WriteCmdParam4(uint8_t cmd, uint8_t d1, uint8_t d2, uint8_t d
 
 #define TFTLCD_DELAY 0xFFFF
 #define TFTLCD_DELAY8 0x7F
+
 static void init_table(const void *table, int16_t size)
 {
 
@@ -379,7 +390,6 @@ uint32_t readReg40(uint16_t reg)
 
 void TFT_init(uint16_t ID)
 {
-    int16_t *p16;               //so we can "write" to a const protected variable.
     const uint8_t *table8_ads = NULL;
     int16_t table_size;
     switch (_lcd_ID = ID) {
@@ -400,14 +410,9 @@ void TFT_init(uint16_t ID)
             0xF7, 4, 0xA9, 0x51, 0x2C, 0x82,    //Adjustment Control 3 [A9 51 2C 82]
         };
         table8_ads = ILI9488_regValues_max, table_size = sizeof(ILI9488_regValues_max);
-        p16 = (int16_t *) & height;
-        *p16 = 480;
-        p16 = (int16_t *) & width;
-        *p16 = 320;
         break;
     default:
-        p16 = (int16_t *) & width;
-        *p16 = 0;       //error value for width
+    	m_width = 0;
         break;
     }
     _lcd_rev = ((_lcd_capable & REV_SCREEN) != 0);
@@ -450,7 +455,7 @@ int16_t readGRAM(int16_t x, int16_t y, uint16_t * block, int16_t w, int16_t h)
 {
     uint16_t ret, dummy, _MR = _MW;
     int16_t n = w * h, row = 0, col = 0;
-    uint8_t r, g, b, tmp;
+    uint8_t r, g, b;
     if (!is8347 && (_lcd_capable & MIPI_DCS_REV1)) // HX8347 uses same register
         _MR = 0x2E;
     if (_lcd_ID == 0x1602) _MR = 0x2E;
@@ -479,9 +484,9 @@ int16_t readGRAM(int16_t x, int16_t y, uint16_t * block, int16_t w, int16_t h)
                 READ_8(g);
                 READ_8(b);
                 if (_lcd_capable & READ_BGR)
-                    ret = color565(b, g, r);
+                    ret = TFT_color565(b, g, r);
                 else
-                    ret = color565(r, g, b);
+                    ret = TFT_color565(r, g, b);
             } else
             {
                 READ_16(ret);
@@ -505,17 +510,17 @@ int16_t readGRAM(int16_t x, int16_t y, uint16_t * block, int16_t w, int16_t h)
         setWriteDir();
     }
     if (!(_lcd_capable & MIPI_DCS_REV1))
-        setAddrWindow(0, 0, width() - 1, height() - 1);
+        setAddrWindow(0, 0, m_width - 1, m_height - 1);
     return 0;
 }
 
 void TFT_setRotation(uint8_t r)
 {
-   uint16_t GS, SS_v, ORG, REV = _lcd_rev;
-   uint8_t val, d[3];
+   uint16_t GS, SS_v, ORG;
+   uint8_t val;
    m_rotation = r & 3;           // just perform the operation ourselves on the protected variables
-   _width = (m_rotation & 1) ? HEIGHT : WIDTH;
-   _height = (m_rotation & 1) ? WIDTH : HEIGHT;
+   m_width = (m_rotation & 1) ? HEIGHT : WIDTH;
+   m_height = (m_rotation & 1) ? WIDTH : HEIGHT;
    switch (m_rotation) {
    case 0:                    //PORTRAIT:
        val = 0x48;             //MY=0, MX=1, MV=0, ML=0, BGR=1
@@ -537,46 +542,7 @@ void TFT_setRotation(uint8_t r)
    if (_lcd_capable & INVERT_RGB)
        val ^= 0x08;
    if (_lcd_capable & MIPI_DCS_REV1) {
-       if (_lcd_ID == 0x6814) {  //.kbv my weird 0x9486 might be 68140
-           GS = (val & 0x80) ? (1 << 6) : 0;   //MY
-           SS_v = (val & 0x40) ? (1 << 5) : 0;   //MX
-           val &= 0x28;        //keep MV, BGR, MY=0, MX=0, ML=0
-           d[0] = 0;
-           d[1] = GS | SS_v | 0x02;      //MY, MX
-           d[2] = 0x3B;
-           WriteCmdParamN(0xB6, 3, d);
-           goto common_MC;
-       }
-       else if (_lcd_ID == 0x1963 || _lcd_ID == 0x9481 || _lcd_ID == 0x1511) {
-           if (val & 0x80)
-               val |= 0x01;    //GS
-           if ((val & 0x40))
-               val |= 0x02;    //SS
-           if (_lcd_ID == 0x1963) val &= ~0xC0;
-           if (_lcd_ID == 0x9481) val &= ~0xD0;
-           if (_lcd_ID == 0x1511) {
-               val &= ~0x10;   //remove ML
-               val |= 0xC0;    //force penguin 180 rotation
-           }
-           goto common_MC;
-      }
-       else if (is8347) {
-           _MC = 0x02, _MP = 0x06, _MW = 0x22, _SC = 0x02, _EC = 0x04, _SP = 0x06, _EP = 0x08;
-           if (_lcd_ID == 0x0065) {             //HX8352-B
-               val |= 0x01;    //GS=1
-               if ((val & 0x10)) val ^= 0xD3;  //(ML) flip MY, MX, ML, SS, GS
-               if (r & 1) _MC = 0x82, _MP = 0x80;
-               else _MC = 0x80, _MP = 0x82;
-           }
-           if (_lcd_ID == 0x5252) {             //HX8352-A
-               val |= 0x02;   //VERT_SCROLLON
-               if ((val & 0x10)) val ^= 0xD4;  //(ML) flip MY, MX, SS. GS=1
-           }
-			goto common_BGR;
-       }
-     common_MC:
        _MC = 0x2A, _MP = 0x2B, _MW = 0x2C, _SC = 0x2A, _EC = 0x2A, _SP = 0x2B, _EP = 0x2B;
-     common_BGR:
        WriteCmdParamN(is8347 ? 0x16 : 0x36, 1, &val);
        _lcd_madctl = val;
    }
@@ -601,7 +567,7 @@ void TFT_setRotation(uint8_t r)
          common_SS:
            SS_v = (val & 0x40) ? (1 << 8) : 0;
            WriteCmdData(0x01, SS_v);     // set Driver Output Control
-         common_ORG:
+
            ORG = (val & 0x20) ? (1 << 3) : 0;
            if (val & 0x08)
                ORG |= 0x1000;  //BGR
@@ -616,14 +582,14 @@ void TFT_setRotation(uint8_t r)
        x = _SC, _SC = _SP, _SP = x;    //.kbv check 0139
        x = _EC, _EC = _EP, _EP = x;    //.kbv check 0139
    }
-   setAddrWindow(0, 0, width() - 1, height() - 1);
+   setAddrWindow(0, 0, m_width - 1, m_height - 1);
    TFT_vertScroll(0, HEIGHT, 0);   //reset scrolling after a rotation
 }
 
 void TFT_drawPixel(int16_t x, int16_t y, uint16_t color)
 {
    // MCUFRIEND just plots at edge if you try to write outside of the box:
-   if (x < 0 || y < 0 || x >= width() || y >= height())
+   if (x < 0 || y < 0 || x >= TFT_width() || y >= TFT_height())
        return;
    setAddrWindow(x, y, x, y);
 
@@ -671,13 +637,13 @@ void TFT_vertScroll(int16_t top, int16_t scrollines, int16_t offset)
 {
     int16_t bfa = HEIGHT - top - scrollines;  // bottom fixed area
     int16_t vsp;
-    int16_t sea = top;
-	if (_lcd_ID == 0x9327) bfa += 32;
+
+    if (_lcd_ID == 0x9327) bfa += 32;
     if (offset <= -scrollines || offset >= scrollines) offset = 0; //valid scroll
 	vsp = top + offset; // vertical start position
     if (offset < 0)
         vsp += scrollines;          //keep in unsigned range
-    sea = top + scrollines - 1;
+
     if (_lcd_capable & MIPI_DCS_REV1) {
         uint8_t d[6];           // for multi-byte parameters
         d[0] = top >> 8;        //TFA
@@ -720,17 +686,16 @@ void TFT_vertScroll(int16_t top, int16_t scrollines, int16_t offset)
     }
 }
 
-
-
-
 void pushColors16b(uint16_t * block, int16_t n, uint8_t first)
 {
     pushColors_any(_MW, (uint8_t *)block, n, first, 0);
 }
+
 void pushColors8b(uint8_t * block, int16_t n, uint8_t first)
 {
     pushColors_any(_MW, (uint8_t *)block, n, first, 2);   //regular bigend
 }
+
 void pushColors4n(const uint8_t * block, int16_t n, uint8_t first, uint8_t bigend)
 {
     pushColors_any(_MW, (uint8_t *)block, n, first, bigend ? 3 : 1);
@@ -739,7 +704,7 @@ void pushColors4n(const uint8_t * block, int16_t n, uint8_t first, uint8_t bigen
 
 void TFT_fillScreen(uint16_t color)
 {
-    TFT_fillRect(0, 0, _width, _height, color);
+    TFT_fillRect(0, 0, m_width, m_height, color);
 }
 
 void TFT_invertDisplay(uint8_t i)
@@ -777,18 +742,13 @@ void TFT_invertDisplay(uint8_t i)
     }
 }
 
-void  drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
+void  TFT_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 {
 	TFT_fillRect(x, y, 1, h, color);
 }
-void  drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
+void  TFT_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 {
 	TFT_fillRect(x, y, w, 1, color);
-}
-
-void writePixel(int16_t x, int16_t y, uint16_t color)
-{
-    TFT_drawPixel(x, y, color);
 }
 
 void writeLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
@@ -819,9 +779,9 @@ void writeLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
 
     for (; x0<=x1; x0++) {
         if (steep) {
-            writePixel(y0, x0, color);
+            TFT_drawPixel(y0, x0, color);
         } else {
-            writePixel(x0, y0, color);
+            TFT_drawPixel(x0, y0, color);
         }
         err -= dy;
         if (err < 0) {
@@ -835,11 +795,13 @@ void writeLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
 void TFT_drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color)
 {
     if(x0 == x1){
-        if(y0 > y1) _swap_int16_t(y0, y1);
-        drawFastVLine(x0, y0, y1 - y0 + 1, color);
+        if(y0 > y1)
+        	_swap_int16_t(y0, y1);
+        TFT_drawFastVLine(x0, y0, y1 - y0 + 1, color);
     } else if(y0 == y1){
-        if(x0 > x1) _swap_int16_t(x0, x1);
-        drawFastHLine(x0, y0, x1 - x0 + 1, color);
+        if(x0 > x1)
+        	_swap_int16_t(x0, x1);
+        TFT_drawFastHLine(x0, y0, x1 - x0 + 1, color);
     } else {
         writeLine(x0, y0, x1, y1, color);
     }
@@ -853,12 +815,12 @@ void TFT_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color)
     int16_t x = 0;
     int16_t y = r;
 
-    writePixel(x0  , y0+r, color);
-    writePixel(x0  , y0-r, color);
-    writePixel(x0+r, y0  , color);
-    writePixel(x0-r, y0  , color);
+    TFT_drawPixel(x0, y0 + r, color);
+    TFT_drawPixel(x0, y0 - r, color);
+    TFT_drawPixel(x0 + r, y0, color);
+    TFT_drawPixel(x0 - r, y0, color);
 
-    while (x<y) {
+    while (x < y) {
         if (f >= 0) {
             y--;
             ddF_y += 2;
@@ -868,14 +830,14 @@ void TFT_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color)
         ddF_x += 2;
         f += ddF_x;
 
-        writePixel(x0 + x, y0 + y, color);
-        writePixel(x0 - x, y0 + y, color);
-        writePixel(x0 + x, y0 - y, color);
-        writePixel(x0 - x, y0 - y, color);
-        writePixel(x0 + y, y0 + x, color);
-        writePixel(x0 - y, y0 + x, color);
-        writePixel(x0 + y, y0 - x, color);
-        writePixel(x0 - y, y0 - x, color);
+        TFT_drawPixel(x0 + x, y0 + y, color);
+        TFT_drawPixel(x0 - x, y0 + y, color);
+        TFT_drawPixel(x0 + x, y0 - y, color);
+        TFT_drawPixel(x0 - x, y0 - y, color);
+        TFT_drawPixel(x0 + y, y0 + x, color);
+        TFT_drawPixel(x0 - y, y0 + x, color);
+        TFT_drawPixel(x0 + y, y0 - x, color);
+        TFT_drawPixel(x0 - y, y0 - x, color);
     }
 }
 
@@ -897,27 +859,27 @@ void TFT_drawCircleHelper( int16_t x0, int16_t y0, int16_t r, uint8_t cornername
         ddF_x += 2;
         f     += ddF_x;
         if (cornername & 0x4) {
-            writePixel(x0 + x, y0 + y, color);
-            writePixel(x0 + y, y0 + x, color);
+            TFT_drawPixel(x0 + x, y0 + y, color);
+            TFT_drawPixel(x0 + y, y0 + x, color);
         }
         if (cornername & 0x2) {
-            writePixel(x0 + x, y0 - y, color);
-            writePixel(x0 + y, y0 - x, color);
+            TFT_drawPixel(x0 + x, y0 - y, color);
+            TFT_drawPixel(x0 + y, y0 - x, color);
         }
         if (cornername & 0x8) {
-            writePixel(x0 - y, y0 + x, color);
-            writePixel(x0 - x, y0 + y, color);
+            TFT_drawPixel(x0 - y, y0 + x, color);
+            TFT_drawPixel(x0 - x, y0 + y, color);
         }
         if (cornername & 0x1) {
-            writePixel(x0 - y, y0 - x, color);
-            writePixel(x0 - x, y0 - y, color);
+            TFT_drawPixel(x0 - y, y0 - x, color);
+            TFT_drawPixel(x0 - x, y0 - y, color);
         }
     }
 }
 
 void TFT_fillCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color)
 {
-    drawFastVLine(x0, y0-r, 2*r+1, color);
+    TFT_drawFastVLine(x0, y0-r, 2*r+1, color);
     TFT_fillCircleHelper(x0, y0, r, 3, 0, color);
 }
 
@@ -946,12 +908,12 @@ void TFT_fillCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t corners, in
         // These checks avoid double-drawing certain lines, important
         // for the SSD1306 library which has an INVERT drawing mode.
         if(x < (y + 1)) {
-            if(corners & 1) drawFastVLine(x0+x, y0-y, 2*y+delta, color);
-            if(corners & 2) drawFastVLine(x0-x, y0-y, 2*y+delta, color);
+            if(corners & 1) TFT_drawFastVLine(x0+x, y0-y, 2*y+delta, color);
+            if(corners & 2) TFT_drawFastVLine(x0-x, y0-y, 2*y+delta, color);
         }
         if(y != py) {
-            if(corners & 1) drawFastVLine(x0+py, y0-px, 2*px+delta, color);
-            if(corners & 2) drawFastVLine(x0-py, y0-px, 2*px+delta, color);
+            if(corners & 1) TFT_drawFastVLine(x0+py, y0-px, 2*px+delta, color);
+            if(corners & 2) TFT_drawFastVLine(x0-py, y0-px, 2*px+delta, color);
             py = y;
         }
         px = x;
@@ -960,10 +922,10 @@ void TFT_fillCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t corners, in
 
 void TFT_drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
 {
-    drawFastHLine(x, y, w, color);
-    drawFastHLine(x, y+h-1, w, color);
-    drawFastVLine(x, y, h, color);
-    drawFastVLine(x+w-1, y, h, color);
+    TFT_drawFastHLine(x, y, w, color);
+    TFT_drawFastHLine(x, y+h-1, w, color);
+    TFT_drawFastVLine(x, y, h, color);
+    TFT_drawFastVLine(x+w-1, y, h, color);
 }
 
 void TFT_fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
@@ -976,8 +938,8 @@ void TFT_fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
     end = x + w;
     if (x < 0)
         x = 0;
-    if (end > width())
-        end = width();
+    if (end > m_width)
+        end = m_width;
     w = end - x;
     if (h < 0) {
         h = -h;
@@ -986,8 +948,8 @@ void TFT_fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
     end = y + h;
     if (y < 0)
         y = 0;
-    if (end > height())
-        end = height();
+    if (end > m_height)
+        end = m_height;
     h = end - y;
     setAddrWindow(x, y, x + w - 1, y + h - 1);
     CS_ACTIVE;
@@ -1006,8 +968,8 @@ void TFT_fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
         } while (--end != 0);
     }
     CS_IDLE;
-    if (!(_lcd_capable & MIPI_DCS_REV1) || ((_lcd_ID == 0x1526) && (m_rotation & 1)))
-        setAddrWindow(0, 0, width() - 1, height() - 1);
+    if (!(_lcd_capable & MIPI_DCS_REV1))
+        setAddrWindow(0, 0, m_width - 1, m_height - 1);
 }
 
 
@@ -1016,10 +978,10 @@ void TFT_drawRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, ui
     int16_t max_radius = ((w < h) ? w : h) / 2; // 1/2 minor axis
     if(r > max_radius) r = max_radius;
     // smarter version
-    drawFastHLine(x+r  , y    , w-2*r, color); // Top
-    drawFastHLine(x+r  , y+h-1, w-2*r, color); // Bottom
-    drawFastVLine(x    , y+r  , h-2*r, color); // Left
-    drawFastVLine(x+w-1, y+r  , h-2*r, color); // Right
+    TFT_drawFastHLine(x+r  , y    , w-2*r, color); // Top
+    TFT_drawFastHLine(x+r  , y+h-1, w-2*r, color); // Bottom
+    TFT_drawFastVLine(x    , y+r  , h-2*r, color); // Left
+    TFT_drawFastVLine(x+w-1, y+r  , h-2*r, color); // Right
     // draw four corners
     TFT_drawCircleHelper(x+r    , y+r    , r, 1, color);
     TFT_drawCircleHelper(x+w-r-1, y+r    , r, 2, color);
@@ -1070,7 +1032,7 @@ void TFT_fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2
         else if(x1 > b) b = x1;
         if(x2 < a)      a = x2;
         else if(x2 > b) b = x2;
-        drawFastHLine(a, y0, b-a+1, color);
+        TFT_drawFastHLine(a, y0, b-a+1, color);
         return;
     }
 
@@ -1104,7 +1066,7 @@ void TFT_fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2
         b = x0 + (x2 - x0) * (y - y0) / (y2 - y0);
         */
         if(a > b) _swap_int16_t(a,b);
-        drawFastHLine(a, y, b-a+1, color);
+        TFT_drawFastHLine(a, y, b-a+1, color);
     }
 
     // For lower part of triangle, find scanline crossings for segments
@@ -1121,196 +1083,9 @@ void TFT_fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2
         b = x0 + (x2 - x0) * (y - y0) / (y2 - y0);
         */
         if(a > b) _swap_int16_t(a,b);
-        drawFastHLine(a, y, b-a+1, color);
+        TFT_drawFastHLine(a, y, b-a+1, color);
     }
 }
-
-
-/********************************* TESTS  *********************************************/
-
-void TFT_testFillScreen()
-{
-    TFT_fillScreen(BLACK);
-    TFT_fillScreen(RED);
-    TFT_fillScreen(GREEN);
-    TFT_fillScreen(BLUE);
-    TFT_fillScreen(BLACK);
-}
-
-void TFT_testLines(uint16_t color)
-{
-    int           x1, y1, x2, y2,
-                  w = width(),
-                  h = height();
-
-    TFT_fillScreen(BLACK);
-
-    x1 = y1 = 0;
-    y2    = h - 1;
-    for (x2 = 0; x2 < w; x2 += 6) TFT_drawLine(x1, y1, x2, y2, color);
-    x2    = w - 1;
-    for (y2 = 0; y2 < h; y2 += 6) TFT_drawLine(x1, y1, x2, y2, color);
-
-    TFT_fillScreen(BLACK);
-
-    x1    = w - 1;
-    y1    = 0;
-    y2    = h - 1;
-    for (x2 = 0; x2 < w; x2 += 6) TFT_drawLine(x1, y1, x2, y2, color);
-    x2    = 0;
-    for (y2 = 0; y2 < h; y2 += 6) TFT_drawLine(x1, y1, x2, y2, color);
-
-    TFT_fillScreen(BLACK);
-
-    x1    = 0;
-    y1    = h - 1;
-    y2    = 0;
-    for (x2 = 0; x2 < w; x2 += 6) TFT_drawLine(x1, y1, x2, y2, color);
-    x2    = w - 1;
-    for (y2 = 0; y2 < h; y2 += 6) TFT_drawLine(x1, y1, x2, y2, color);
-
-    TFT_fillScreen(BLACK);
-
-    x1    = w - 1;
-    y1    = h - 1;
-    y2    = 0;
-    for (x2 = 0; x2 < w; x2 += 6) TFT_drawLine(x1, y1, x2, y2, color);
-    x2    = 0;
-    for (y2 = 0; y2 < h; y2 += 6) TFT_drawLine(x1, y1, x2, y2, color);
-
-}
-
-void TFT_testFastLines(uint16_t color1, uint16_t color2)
-{
-    int           x, y, w = width(), h = height();
-
-    TFT_fillScreen(BLACK);
-    for (y = 0; y < h; y += 5) drawFastHLine(0, y, w, color1);
-    for (x = 0; x < w; x += 5) drawFastVLine(x, 0, h, color2);
-}
-
-void TFT_testRects(uint16_t color) {
-    int           n, i, i2,
-                  cx = width()  / 2,
-                  cy = height() / 2;
-
-    TFT_fillScreen(BLACK);
-    n     = min(width(), height());
-    for (i = 2; i < n; i += 6) {
-        i2 = i / 2;
-        TFT_drawRect(cx - i2, cy - i2, i, i, color);
-    }
-
-}
-
-void TFT_testFilledRects(uint16_t color1, uint16_t color2)
-{
-    int           n, i, i2,
-                  cx = width()  / 2 - 1,
-                  cy = height() / 2 - 1;
-
-    TFT_fillScreen(BLACK);
-    n = min(width(), height());
-    for (i = n; i > 0; i -= 6) {
-        i2    = i / 2;
-
-        TFT_fillRect(cx - i2, cy - i2, i, i, color1);
-
-        TFT_drawRect(cx - i2, cy - i2, i, i, color2);
-    }
-}
-
-void TFT_testFilledCircles(uint8_t radius, uint16_t color)
-{
-    int x, y, w = width(), h = height(), r2 = radius * 2;
-
-    TFT_fillScreen(BLACK);
-    for (x = radius; x < w; x += r2) {
-        for (y = radius; y < h; y += r2) {
-            TFT_fillCircle(x, y, radius, color);
-        }
-    }
-
-}
-
-void TFT_testCircles(uint8_t radius, uint16_t color)
-{
-    int           x, y, r2 = radius * 2,
-                        w = width()  + radius,
-                        h = height() + radius;
-
-    // Screen is not cleared for this one -- this is
-    // intentional and does not affect the reported time.
-    for (x = 0; x < w; x += r2) {
-        for (y = 0; y < h; y += r2) {
-            TFT_drawCircle(x, y, radius, color);
-        }
-    }
-
-}
-
-void TFT_testTriangles() {
-    int           n, i, cx = width()  / 2 - 1,
-                        cy = height() / 2 - 1;
-
-    TFT_fillScreen(BLACK);
-    n     = min(cx, cy);
-    for (i = 0; i < n; i += 5) {
-        TFT_drawTriangle(
-            cx    , cy - i, // peak
-            cx - i, cy + i, // bottom left
-            cx + i, cy + i, // bottom right
-            color565(0, 0, i));
-    }
-
-}
-
-void TFT_testFilledTriangles() {
-    int           i, cx = width()  / 2 - 1,
-                     cy = height() / 2 - 1;
-
-    TFT_fillScreen(BLACK);
-    for (i = min(cx, cy); i > 10; i -= 5) {
-        TFT_fillTriangle(cx, cy - i, cx - i, cy + i, cx + i, cy + i,
-                         color565(0, i, i));
-        TFT_drawTriangle(cx, cy - i, cx - i, cy + i, cx + i, cy + i,
-                         color565(i, i, 0));
-    }
-}
-
-void TFT_testRoundRects() {
-    int           w, i, i2, red, step,
-                  cx = width()  / 2 - 1,
-                  cy = height() / 2 - 1;
-
-    TFT_fillScreen(BLACK);
-    w     = min(width(), height());
-    red = 0;
-    step = (256 * 6) / w;
-    for (i = 0; i < w; i += 6) {
-        i2 = i / 2;
-        red += step;
-        TFT_drawRoundRect(cx - i2, cy - i2, i, i, i / 8, color565(red, 0, 0));
-    }
-
-}
-
-void TFT_testFilledRoundRects() {
-    int           i, i2, green, step,
-                  cx = width()  / 2 - 1,
-                  cy = height() / 2 - 1;
-
-    TFT_fillScreen(BLACK);
-    green = 256;
-    step = (256 * 6) / min(width(), height());
-    for (i = min(width(), height()); i > 20; i -= 6) {
-        i2 = i / 2;
-        green -= step;
-        TFT_fillRoundRect(cx - i2, cy - i2, i, i, i / 8, color565(0, green, 0));
-    }
-
-}
-
 
 
 void drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg, uint8_t size)
@@ -1330,62 +1105,67 @@ void drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg
 	uint8_t  xx, yy, bits = 0, bit = 0;
 	int16_t  xo16 = 0, yo16 = 0;
 
-	if(size > 1) {
-		xo16 = xo;
-		yo16 = yo;
-	}
-	/*Fill rectangle above character*/
-	TFT_fillRect(x, y - gfxFont->yAdvance + 5,  glyph->xAdvance, gfxFont->yAdvance + yo - 5 , m_textbgcolor); //PRW Test
-	/*Fill gap to left of character*/
-	if(xo > 0)
+	if( w > 0 && h > 0)
 	{
-		TFT_fillRect(x, y + yo, xo , h, m_textbgcolor); //PRW Test
-	}
-	/*Fill gap to right of character*/
-	if(w-xo < glyph->xAdvance)
-	{
-		TFT_fillRect(x+xo+w, y +yo, glyph->xAdvance - xo -w , h, m_textbgcolor); //PRW Test
-	}
-	/*Fill gap beneath character*/
-	TFT_fillRect(x, y + 5,  glyph->xAdvance, (yo +h) - 5  , m_textbgcolor); //PRW Test
+		if(size > 1) {
+			xo16 = xo;
+			yo16 = yo;
+		}
+		/*Fill rectangle above character*/
+		TFT_fillRect(x, y - gfxFont->yAdvance + gfxFont->yoffset,  glyph->xAdvance, gfxFont->yAdvance + yo - gfxFont->yoffset , m_textbgcolor);
+		/*Fill gap to left of character*/
+		if(xo > 0)
+		{
+			TFT_fillRect(x, y + yo, xo , h, m_textbgcolor); //PRW Test
+		}
+		/*Fill gap to right of character*/
+		if(w-xo < glyph->xAdvance)
+		{
+			TFT_fillRect(x+xo+w, y +yo, glyph->xAdvance - xo -w , h, m_textbgcolor); //PRW Test
+		}
+		/*Fill gap beneath character*/
+		TFT_fillRect(x, y + gfxFont->yoffset,  glyph->xAdvance, (yo +h) - gfxFont->yoffset  , m_textbgcolor); //PRW Test
 
-	if(size == 1)
-	{
-		for(yy=0; yy<h; yy++) {
-			for(xx=0; xx<w; xx++) {
-				if(!(bit++ & 7)) {
-					bits = *bitmap;
-					bitmap++;
-				}
+		if(size == 1)
+		{
+			for(yy=0; yy<h; yy++) {
+				for(xx=0; xx<w; xx++) {
+					if(!(bit++ & 7)) {
+						bits = *bitmap;
+						bitmap++;
+					}
 
-				if(bits & 0x80)
-				{
-					writePixel(x+xo+xx, y+yo+yy, color);
-				}else{
-					writePixel(x+xo+xx, y+yo+yy, bg);
+					if(bits & 0x80)
+					{
+						TFT_drawPixel(x+xo+xx, y+yo+yy, color);
+					}else{
+						TFT_drawPixel(x+xo+xx, y+yo+yy, bg);
+					}
+					bits <<= 1;
 				}
-				bits <<= 1;
+			}
+		}else{
+			for(yy=0; yy<h; yy++) {
+				for(xx=0; xx<w; xx++) {
+					if(!(bit++ & 7)) {
+						bits = *bitmap;
+						bitmap++;
+					}
+
+					if(bits & 0x80)
+					{
+						TFT_fillRect(x+(xo16+xx)*size, y+(yo16+yy)*size,
+						  size, size, color);
+					}else{
+						TFT_fillRect(x+(xo16+xx)*size, y+(yo16+yy)*size,
+						  size, size, bg);
+					}
+					bits <<= 1;
+				}
 			}
 		}
-	}else{
-		for(yy=0; yy<h; yy++) {
-			for(xx=0; xx<w; xx++) {
-				if(!(bit++ & 7)) {
-					bits = *bitmap;
-					bitmap++;
-				}
-
-				if(bits & 0x80)
-				{
-					TFT_fillRect(x+(xo16+xx)*size, y+(yo16+yy)*size,
-					  size, size, color);
-				}else{
-					TFT_fillRect(x+(xo16+xx)*size, y+(yo16+yy)*size,
-					  size, size, bg);
-				}
-				bits <<= 1;
-			}
-		}
+	}else{/*No bitmap to display so fill with background*/
+		TFT_fillRect(x, y - gfxFont->yAdvance + gfxFont->yoffset,  glyph->xAdvance, gfxFont->yAdvance, m_textbgcolor);
 	}
 }
 /**************************************************************************/
@@ -1409,14 +1189,12 @@ size_t TFT_write(uint8_t c)
 					   h     = glyph->height;
 			if((w > 0) && (h > 0)) { // Is there an associated bitmap?
 				int16_t xo = (int8_t)glyph->xOffset; // sic
-				if(m_wrap && ((m_cursor_x + m_textsize * (xo + w)) > _width)) {
+				if(m_wrap && ((m_cursor_x + m_textsize * (xo + w)) > m_width)) {
 					m_cursor_x  = 0;
 					m_cursor_y += (int16_t)m_textsize * (uint16_t)gfxFont->yAdvance;
 				}
-				/*PRW Line to erase background*/
-//				TFT_fillRect(m_cursor_x, m_cursor_y - gfxFont->yAdvance + 2, m_textsize * (xo + (uint16_t)glyph->xAdvance), m_textsize * (gfxFont->yAdvance - 1) , m_textbgcolor); //PRW Test
-				drawChar(m_cursor_x, m_cursor_y, c, m_textcolor, m_textbgcolor, m_textsize);
 			}
+			drawChar(m_cursor_x, m_cursor_y, c, m_textcolor, m_textbgcolor, m_textsize);
 			m_cursor_x += (uint16_t)glyph->xAdvance * (int16_t)m_textsize;
 		}
 	}
@@ -1466,7 +1244,7 @@ void charBounds(char c, int16_t *x, int16_t *y, int16_t *minx, int16_t *miny, in
                         xa = glyph->xAdvance;
                 int8_t  xo = glyph->xOffset,
                         yo = glyph->yOffset;
-                if(m_wrap && ((*x+(((int16_t)xo+gw)*m_textsize)) > _width)) {
+                if(m_wrap && ((*x+(((int16_t)xo+gw)*m_textsize)) > m_width)) {
                     *x  = 0; // Reset x to zero, advance y by one line
                     *y += m_textsize * gfxFont->yAdvance;
                 }
@@ -1490,7 +1268,7 @@ void charBounds(char c, int16_t *x, int16_t *y, int16_t *minx, int16_t *miny, in
             *y += m_textsize * 8;             // advance y one line
             // min/max x/y unchaged -- that waits for next 'normal' character
         } else if(c != '\r') {  // Normal char; ignore carriage returns
-            if(m_wrap && ((*x + m_textsize * 6) > _width)) { // Off right?
+            if(m_wrap && ((*x + m_textsize * 6) > m_width)) { // Off right?
                 *x  = 0;                    // Reset x to zero,
                 *y += m_textsize * 8;         // advance y one line
             }
@@ -1524,7 +1302,7 @@ void getTextBounds(const char *str, int16_t x, int16_t y, int16_t *x1, int16_t *
     *y1 = y;
     *w  = *h = 0;
 
-    int16_t minx = _width, miny = _height, maxx = -1, maxy = -1;
+    int16_t minx = m_width, miny = m_height, maxx = -1, maxy = -1;
 
     while((c = *str++))
         charBounds(c, &x, &y, &minx, &miny, &maxx, &maxy);
@@ -1587,8 +1365,8 @@ uint8_t getRotation (void)
 void TFT_scrollup (uint16_t speed)
 {
      uint16_t maxscroll;
-     if (getRotation() & 1) maxscroll = width();
-     else maxscroll = height();
+     if (getRotation() & 1) maxscroll = TFT_width();
+     else maxscroll = TFT_height();
      for (uint16_t i = 1; i <= maxscroll; i++)
      {
           TFT_vertScroll(0, maxscroll, i);
@@ -1601,8 +1379,8 @@ void TFT_scrollup (uint16_t speed)
 void TFT_scrolldown (uint16_t speed)
 {
 	uint16_t maxscroll;
-	if (getRotation() & 1) maxscroll = width();
-	     else maxscroll = height();
+	if (getRotation() & 1) maxscroll = TFT_width();
+	     else maxscroll = TFT_height();
 	for (uint16_t i = 1; i <= maxscroll; i++)
 	{
 		TFT_vertScroll(0, maxscroll, 0 - (int16_t)i);
@@ -1612,14 +1390,16 @@ void TFT_scrolldown (uint16_t speed)
 }
 
 /***************************//*
- * Make a measurement on touchscreen
+ * Make a measurement on touchscreen.
+ * The pressure is actually the resistance between the resistive planes
+ * when the screen is touched. When touched with a stylus the resistance
+ * is ~400ohms but when touched with a finger is ~200ohms
  */
 uint16_t TS_Measure(ADC_HandleTypeDef *hadc, TSPoint *ts)
 {
 uint32_t    ret;
-TSPoint	retval;
+float		p1, p2, rt, x_cor, y_cor;
 
-  ADC_MultiModeTypeDef multimode = {0};
   ADC_ChannelConfTypeDef sConfig = {0};
 
   /*Sample touchscreen over 320 pixel axis*/
@@ -1654,8 +1434,7 @@ TSPoint	retval;
 	  Error_Handler();
   }
 
-  ts->ycor = (uint16_t)HAL_ADC_GetValue(hadc);
-  ts->ycor = (uint16_t)(-0.09718f * (float)ts->ycor + 354.9f);
+  x_cor = (uint16_t)HAL_ADC_GetValue(hadc);		/*x-axis coordinate for resistive screen*/
   /*Make XP high before making it an output*/
   PIN_HIGH(LCD_TS_XP_GPIO_Port, LCD_TS_XP_Pin);
 
@@ -1692,9 +1471,107 @@ TSPoint	retval;
 	  Error_Handler();
   }
 
-  ts->xcor = (uint16_t)HAL_ADC_GetValue(hadc);
+  y_cor = (uint16_t)HAL_ADC_GetValue(hadc);	/*y coordinate for resistive screen*/
 
-  ts->xcor = (uint16_t)(-0.1309f * (float)ts->xcor + 508.7f);
+  /*Measure pressure*/
+  PIN_OUTPUT(LCD_TS_XP_GPIO_Port, LCD_TS_XP_Pin);
+  PIN_OUTPUT(LCD_TS_YM_GPIO_Port, LCD_TS_YM_Pin);
+  PIN_ANALOGUE(LCD_TS_XM_GPIO_Port, LCD_TS_XM_Pin);
+  PIN_ANALOGUE(LCD_TS_YP_GPIO_Port, LCD_TS_YP_Pin);
+
+  PIN_HIGH(LCD_TS_YM_GPIO_Port, LCD_TS_YM_Pin);
+  PIN_LOW(LCD_TS_XP_GPIO_Port, LCD_TS_XP_Pin);
+
+  sConfig.Channel = LCD_TS_YP_ADC_CHAN;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_247CYCLES_5;
+  sConfig.SingleDiff = ADC_SINGLE_ENDED;
+  sConfig.OffsetNumber = ADC_OFFSET_NONE;
+  sConfig.Offset = 0;
+  if (HAL_ADC_ConfigChannel(hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  ret = HAL_ADC_Start(hadc);
+  if(ret != HAL_OK)
+  {
+	  Error_Handler();
+  }
+
+  ret = HAL_ADC_PollForConversion(hadc, 20);
+  if(ret != HAL_OK)
+  {
+	  Error_Handler();
+  }
+
+  p1 = (float)HAL_ADC_GetValue(hadc);
+
+  sConfig.Channel = LCD_TS_XM_ADC_CHAN;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_247CYCLES_5;
+  sConfig.SingleDiff = ADC_SINGLE_ENDED;
+  sConfig.OffsetNumber = ADC_OFFSET_NONE;
+  sConfig.Offset = 0;
+  if (HAL_ADC_ConfigChannel(hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  ret = HAL_ADC_Start(hadc);
+  if(ret != HAL_OK)
+  {
+	  Error_Handler();
+  }
+
+  ret = HAL_ADC_PollForConversion(hadc, 20);
+  if(ret != HAL_OK)
+  {
+	  Error_Handler();
+  }
+
+  p2 = (float)HAL_ADC_GetValue(hadc);
+
+  /* Calculate the resistance between the resistive touch screen layers when pressed
+   * P2 can be zero when there is on touch. This could lead to a divide by zero error.
+   * Therefore check for p2 being zero and if it is report resistance as 1Mohm*/
+  if (p2 >= 1.0f)
+  {
+	  rt = (p1 / p2 - 1.0) * TOUCHSCREEN_RESISTANCE * (float)x_cor / ADC_MAXIMUM;
+  }else{
+	  rt = 65535.0f;
+  }
+
+  ts->pressure = (uint16_t)rt;
+
+  /*Calculate position of touch from ADC measurements*/
+  y_cor = (uint16_t)(-0.1309f * y_cor + 508.7f);
+  x_cor = (uint16_t)(-0.09718f * x_cor  + 354.9f);
+
+  /*Return coordinates based on screen rotation*/
+  switch (m_rotation) {
+  case 0:                    //PORTRAIT:
+	  ts->xcor  = WIDTH - x_cor;
+	  ts->ycor  = y_cor;
+      break;
+  case 1:                    //LANDSCAPE: 90 degrees
+	  ts->xcor  = y_cor;
+	  ts->ycor  = x_cor;
+      break;
+  case 2:                    //PORTRAIT_REV: 180 degrees
+	  ts->xcor  = x_cor;
+	  ts->ycor  = HEIGHT - y_cor;
+      break;
+  case 3:                    //LANDSCAPE_REV: 270 degrees
+	  ts->xcor  = HEIGHT - y_cor;
+	  ts->ycor  = WIDTH -x_cor;
+      break;
+  default:
+	  ts->xcor  = x_cor;
+	  ts->ycor  = y_cor;
+      break;
+  }
+
   /*Ensure pins are configured correctly for display use. S*/
   PIN_OUTPUT(LCD_TS_YP_GPIO_Port, LCD_TS_YP_Pin);
   PIN_OUTPUT(LCD_TS_YM_GPIO_Port, LCD_TS_YM_Pin);

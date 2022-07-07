@@ -45,20 +45,6 @@ void TFT_drawRGBBitmap(int16_t x, int16_t y, uint16_t *bitmap, int16_t w, int16_
 //void drawRGBBitmap(int16_t x, int16_t y, const uint16_t bitmap[], const uint8_t mask[], int16_t w, int16_t h);
 void TFT_drawRGBBitmapmask(int16_t x, int16_t y, uint16_t *bitmap, uint8_t *mask, int16_t w, int16_t h);
 
-
-void TFT_testFastLines(uint16_t color1, uint16_t color2);
-void TFT_testLines(uint16_t color);
-void TFT_testFillScreen();
-void TFT_testRects(uint16_t color);
-void TFT_testFilledRects(uint16_t color1, uint16_t color2);
-void TFT_testFilledCircles(uint8_t radius, uint16_t color) ;
-void TFT_testCircles(uint8_t radius, uint16_t color);
-void TFT_testFilledRoundRects();
-void TFT_testRoundRects();
-void TFT_testFilledTriangles();
-void TFT_testTriangles();
-
-
 void TFT_scrollup (uint16_t speed);
 
 void TFT_scrolldown (uint16_t speed);

@@ -26,7 +26,7 @@
 #include "tft.h"
 #include "user_setting.h"
 #include "functions.h"
-
+#include "tft_test.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -100,7 +100,7 @@ TSPoint		TSCor;
 
   /* USER CODE END SysInit */
 
-  /* Initialize all configured peripherals */
+  /* Initialise all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_SPI1_Init();
@@ -109,7 +109,7 @@ TSPoint		TSCor;
   /* USER CODE BEGIN 2 */
 
   /*Calibrate the ADC*/
-  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
+  ret = HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   if(ret != HAL_OK)
   {
 	  Error_Handler();
@@ -140,7 +140,8 @@ TSPoint		TSCor;
   TFT_setTextbgColor(RED);
   TFT_setTextColor(YELLOW);
   TFT_setTextSize(1);
-  TFT_setFont(&mono9x7bold);
+//  TFT_setFont(&mono9x7bold);
+  TFT_setFont(&mono9x7);
   //printnewtstr(100, YELLOW, &mono9x7bold, 2, "Peter was here all the time");
   //TFT_printstr("Peter was here all the time");
 
@@ -148,6 +149,30 @@ TSPoint		TSCor;
   TFT_drawCircle(480 - 10, 10, 5, YELLOW);
   TFT_drawCircle(10, 320 - 10, 5, YELLOW);
   TFT_drawCircle(480 - 10, 320 - 10 , 5, YELLOW);
+
+  TFT_setFont(&mono12x7);
+//  TFT_setFont(&mono12x7bold);
+//  TFT_setFont(&mono18x7);
+//  TFT_setFont(&mono18x7bold);
+//  TFT_setCursor(0, 100);
+//  TFT_printstr((uint8_t *)"ABgj/,pit");
+
+  TFT_setFont(&mono9x7);
+
+  TFT_testLines(YELLOW);
+  HAL_Delay(1000);
+  TFT_testRects(CYAN);
+  HAL_Delay(1000);
+  TFT_testFilledRects(CYAN, RED);
+  HAL_Delay(1000);
+  TFT_testCircles(32, BLUE);
+  HAL_Delay(1000);
+  TFT_testFilledCircles(32, BLUE);
+  HAL_Delay(1000);
+  TFT_testTriangles();
+  HAL_Delay(1000);
+  TFT_testFilledTriangles();
+  HAL_Delay(1000);
 
   /* USER CODE END 2 */
 
@@ -178,17 +203,17 @@ TSPoint		TSCor;
 
 	  TFT_setTextbgColor(RED);
 	  TFT_setCursor(0, 38);
-	  TFT_printstr(msg);
+	  TFT_printstr((uint8_t *)msg);
 	  TS_Measure(&hadc1, &TSCor);
 
-	  sprintf(msg, "TS = %04d, %04d", TSCor.xcor, TSCor.ycor);
-	  if(TSCor.ycor <= 310)
+	  sprintf(msg, "TS = %04d, %04d, %05d", TSCor.xcor, TSCor.ycor, TSCor.pressure);
+	  if(TSCor.pressure < 550 && TSCor.pressure > 100)
 	  {
 		  //TFT_drawPixel(TSCor.xcor, TSCor.ycor, RED);
 		  TFT_fillCircle(TSCor.xcor, TSCor.ycor, 3, RED);
 	  }
 	  TFT_setCursor(20, 56);
-	  TFT_printstr(msg);
+	  TFT_printstr((uint8_t *)msg);
 
   }
   /* USER CODE END 3 */
