@@ -27,6 +27,8 @@
 #include "user_setting.h"
 #include "functions.h"
 #include "tft_test.h"
+
+#include "MLX90640_API.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,6 +47,8 @@
 /* Private variables ---------------------------------------------------------*/
  ADC_HandleTypeDef hadc1;
 
+I2C_HandleTypeDef hi2c2;
+
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
@@ -52,6 +56,20 @@ TIM_HandleTypeDef htim1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+#define  FPS2HZ   0x02
+#define  FPS4HZ   0x03
+#define  FPS8HZ   0x04
+#define  FPS16HZ  0x05
+#define  FPS32HZ  0x06
+
+#define  MLX90640_ADDR 0x33
+#define	 RefreshRate FPS16HZ
+#define  TA_SHIFT 8 //Default shift for MLX90640 in open air
+
+static uint16_t eeMLX90640[832];
+static float mlx90640To[768];
+uint16_t frame[834];
+float emissivity=0.95;
 
 /* USER CODE END PV */
 
@@ -62,6 +80,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -69,6 +88,108 @@ static void MX_ADC1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 uint16_t ID = 0;
+
+/***********************************getHeatMapColor********************************
+ * Returns heat map colour for the passed value. The passed value is expected to be
+ * between 0 and 1
+ * Code developed from source at http://www.andrewnoske.com/wiki/Code_-_heatmaps_and_color_gradients
+ * */
+uint16_t getHeatMapColour(float value)
+{
+#define NUM_COLORS 6
+
+  /*Scale colours between 0.0 and 255.0*/
+  const float color[NUM_COLORS][3] = { {0.0, 0.0, 255.0}, {0.0, 255.0, 0.0}, {255.0, 255.0, 0.0}, {255.0, 0.0, 0.0}, {255.0, 0.0, 255.0}, {255.0, 255.0, 255.0} };
+    // A static array of 4 colors:  (blue,   green,  yellow,  red) using {r,g,b} for each.
+
+  int idx1;        // |-- Our desired color will be between these two indexes in "color".
+  int idx2;        // |
+  float fractBetween = 0.0f;  // Fraction between "idx1" and "idx2" where our value is.
+  unsigned int RGBPixel;
+
+  if(value <= 0.0f)
+  {
+	  idx1 = idx2 = 0;	// accounts for an input <=0
+  }else{
+	  if(value >= 1)
+	  {
+		  idx1 = idx2 = NUM_COLORS - 1;	// accounts for an input >=0
+	  }else{
+		value = value * (float)(NUM_COLORS - 1);        // Will multiply value by 3.
+		idx1  = (int)value;                        // Our desired color will be after this index.
+		idx2  = idx1 + 1;                        // ... and before this index (inclusive).
+		fractBetween = value - (float)idx1;    // Distance between the two indexes (0-1).
+	  }
+  }
+
+  /*Calculate pixel colour based on RGB565 format*/
+  RGBPixel = (((unsigned int)((color[idx2][0] - color[idx1][0]) * fractBetween + color[idx1][0]) & 0xF8) << 8) |	/*Red*/
+		     (((unsigned int)((color[idx2][1] - color[idx1][1]) * fractBetween + color[idx1][1]) & 0xFC) << 3) |	/*Green*/
+			 (((unsigned int)((color[idx2][2] - color[idx1][2]) * fractBetween + color[idx1][2]) & 0xFB) >> 3);		/*Blue*/
+
+  return (uint16_t)RGBPixel;
+}
+
+#define MLX90640_X_PIXELS 32
+#define MLX90640_Y_PIXELS 24
+/************************************DisplayHeatMap**********************************/
+void DisplayHeatMap(int16_t x, int16_t y, float *HeatMap, float min, float max, uint16_t size)
+{
+	int Xloop, Yloop;
+	float *HPtr;
+	float m,c;
+	uint16_t PixelColour;
+
+	m = 1.0f / (max - min);
+	c = min / (min - max);
+
+	HPtr = HeatMap;
+	for(Yloop = 0 ; Yloop < MLX90640_Y_PIXELS ; Yloop++)
+	{
+		for(Xloop = 0 ; Xloop < MLX90640_X_PIXELS ; Xloop++)
+		{
+			/*Determine pixel colour and rescale passed heat to be between 0 and 1 for required heat range*/
+			PixelColour = getHeatMapColour((*HPtr * m) + c);
+			++HPtr;
+			/*(0,0) is bottom left for display. Need to invert y-axis to look correct*/
+			TFT_fillRect(x + (size * Xloop)  , y + (size * ((MLX90640_Y_PIXELS - 1)  - Yloop)), size, size, PixelColour);
+		}
+	}
+}
+
+void ThermoScaleDraw(int16_t x, int16_t y, int16_t width, int16_t height, float min, float max)
+{
+	int 	row;
+	float 	HeatInc;
+	float	Heat;
+	int		HeatLine;
+	uint16_t	HeatColour;
+	float m,c;
+	char	msg[6];
+
+	m = 1.0f / (max - min);
+	c = min / (min - max);
+
+	HeatInc = (max - min) / (float)(height);
+	Heat = min;
+	HeatLine = (int)(Heat + 1.0f);
+	for(row = y + height; row >= y  ; row--)
+	{
+		HeatColour = getHeatMapColour((Heat * m) + c);
+		if(Heat >= HeatLine)
+		{
+			TFT_drawFastHLine(x, row, width, HeatColour);
+			sprintf(msg,"%+2.0f", Heat);
+			TFT_setCursor(x-34, row + 5);
+			TFT_printstr((uint8_t *)msg);
+			HeatLine += 4;
+		}else{
+			TFT_drawFastHLine(x + 10, row, width-10 , HeatColour);
+		}
+		Heat += HeatInc;
+	}
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -78,10 +199,14 @@ uint16_t ID = 0;
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-uint32_t    ret;
-uint16_t    ADCval;
-char		msg[32];
-TSPoint		TSCor;
+uint32_t    	ret;
+uint16_t    	ADCval;
+char			msg[32];
+TSPoint			TSCor;
+int				TC_status;
+float			TC_vdd, TC_Ta, TC_tr;
+float			HeatMin = 15.0f, HeatMax = 40.0f;
+paramsMLX90640 	mlx90640;
 
   /* USER CODE END 1 */
 
@@ -100,13 +225,25 @@ TSPoint		TSCor;
 
   /* USER CODE END SysInit */
 
-  /* Initialise all configured peripherals */
+  /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_SPI1_Init();
   MX_TIM1_Init();
   MX_ADC1_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
+
+  /*Setup thermo camera*/
+  MLX90640_SetRefreshRate(MLX90640_ADDR, RefreshRate);
+  MLX90640_SetChessMode(MLX90640_ADDR);
+
+  TC_status = MLX90640_DumpEE(MLX90640_ADDR, eeMLX90640);
+  if (TC_status != 0)
+	  printf("\r\nload system parameters error with code:%d\r\n", TC_status);
+  TC_status = MLX90640_ExtractParameters(eeMLX90640, &mlx90640);
+  if (TC_status != 0)
+	  printf("\r\nParameter extraction failed with error code:%d\r\n", TC_status);
 
   /*Calibrate the ADC*/
   ret = HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
@@ -114,10 +251,9 @@ TSPoint		TSCor;
   {
 	  Error_Handler();
   }
-
   HAL_TIM_Base_Start(&htim1);
 
-  /*Reset the display before callling any display related commands*/
+  /*Reset the display before calling any display related commands*/
   TFT_reset();
   ID = TFT_readID();
 
@@ -127,52 +263,17 @@ TSPoint		TSCor;
 
   TFT_setRotation(1);
 
-  TFT_fillScreen(RED);
-  TFT_fillScreen(GREEN);
-  TFT_fillScreen(YELLOW);
-  TFT_fillScreen(MAGENTA);
-  TFT_fillScreen(CYAN);
-  TFT_fillScreen(RED);
-  TFT_fillScreen(BLACK);
-
   TFT_setCursor(0, 19);
 
   TFT_setTextbgColor(RED);
   TFT_setTextColor(YELLOW);
   TFT_setTextSize(1);
-//  TFT_setFont(&mono9x7bold);
-  TFT_setFont(&mono9x7);
-  //printnewtstr(100, YELLOW, &mono9x7bold, 2, "Peter was here all the time");
-  //TFT_printstr("Peter was here all the time");
-
-  TFT_drawCircle(10, 10, 5, YELLOW);
-  TFT_drawCircle(480 - 10, 10, 5, YELLOW);
-  TFT_drawCircle(10, 320 - 10, 5, YELLOW);
-  TFT_drawCircle(480 - 10, 320 - 10 , 5, YELLOW);
-
-  TFT_setFont(&mono12x7);
-//  TFT_setFont(&mono12x7bold);
-//  TFT_setFont(&mono18x7);
-//  TFT_setFont(&mono18x7bold);
-//  TFT_setCursor(0, 100);
-//  TFT_printstr((uint8_t *)"ABgj/,pit");
-
   TFT_setFont(&mono9x7);
 
-  TFT_testLines(YELLOW);
-  HAL_Delay(1000);
-  TFT_testRects(CYAN);
-  HAL_Delay(1000);
-  TFT_testFilledRects(CYAN, RED);
-  HAL_Delay(1000);
-  TFT_testCircles(32, BLUE);
-  HAL_Delay(1000);
-  TFT_testFilledCircles(32, BLUE);
-  HAL_Delay(1000);
-  TFT_testTriangles();
-  HAL_Delay(1000);
-  TFT_testFilledTriangles();
-  HAL_Delay(1000);
+  TFT_setCursor(100, 25);
+  TFT_printstr("MLX90640 Thermo Camera");
+
+  ThermoScaleDraw(68, 70, 30, 24 * 10, HeatMin, HeatMax);
 
   /* USER CODE END 2 */
 
@@ -183,39 +284,34 @@ TSPoint		TSCor;
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  MX_ADC1_Init();
-	  ret = HAL_ADC_Start(&hadc1);
-	  if(ret != HAL_OK)
-	  {
-		  Error_Handler();
-	  }
 
-	  ret = HAL_ADC_PollForConversion(&hadc1, 20);
-	  if(ret != HAL_OK)
-	  {
-		  Error_Handler();
-	  }
+	  /*Thermo camera capture*/
+	  TC_status = MLX90640_GetFrameData(MLX90640_ADDR, frame);
+      if (TC_status < 0)
+      {
+		  printf("GetFrame Error: %d\r\n", TC_status);
+      }
+      TC_vdd = MLX90640_GetVdd(frame, &mlx90640);
+      TC_Ta = MLX90640_GetTa(frame, &mlx90640);
 
-	  ADCval = (uint16_t)HAL_ADC_GetValue(&hadc1);
+      TC_tr = TC_Ta - TA_SHIFT;
+      MLX90640_CalculateTo(frame, &mlx90640, emissivity , TC_tr, mlx90640To);
 
-	  HAL_Delay(10);
-	  sprintf(msg, "ADC = %05.3f ", (float)ADCval/ 4096.0f * 3.3f);
+      DisplayHeatMap(112, 70, mlx90640To, HeatMin, HeatMax, 10);
 
-	  TFT_setTextbgColor(RED);
-	  TFT_setCursor(0, 38);
-	  TFT_printstr((uint8_t *)msg);
+      /************************************/
+
 	  TS_Measure(&hadc1, &TSCor);
 
 	  sprintf(msg, "TS = %04d, %04d, %05d", TSCor.xcor, TSCor.ycor, TSCor.pressure);
 	  if(TSCor.pressure < 550 && TSCor.pressure > 100)
 	  {
-		  //TFT_drawPixel(TSCor.xcor, TSCor.ycor, RED);
 		  TFT_fillCircle(TSCor.xcor, TSCor.ycor, 3, RED);
 	  }
 	  TFT_setCursor(20, 56);
 	  TFT_printstr((uint8_t *)msg);
-
   }
+
   /* USER CODE END 3 */
 }
 
@@ -332,6 +428,54 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief I2C2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C2_Init(void)
+{
+
+  /* USER CODE BEGIN I2C2_Init 0 */
+
+  /* USER CODE END I2C2_Init 0 */
+
+  /* USER CODE BEGIN I2C2_Init 1 */
+
+  /* USER CODE END I2C2_Init 1 */
+  hi2c2.Instance = I2C2;
+  hi2c2.Init.Timing = 0x00702991;
+  hi2c2.Init.OwnAddress1 = 0;
+  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c2.Init.OwnAddress2 = 0;
+  hi2c2.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c2, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c2, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C2_Init 2 */
+
+  /* USER CODE END I2C2_Init 2 */
 
 }
 
